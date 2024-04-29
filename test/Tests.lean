@@ -43,36 +43,41 @@ let sym <- Clingo.Symbol.mk_number 1000
    println! "args are {sym.args?}"
    println! "type is {repr sym.type}"
 
-def my_callback (_evt : Clingo.SolveEvent) : IO Bool := do
-  match _evt with
-  | Clingo.SolveEvent.ModelFound none => println! "found a model (none)"
-  | Clingo.SolveEvent.ModelFound (some m) =>
-       println! "found a model (some)"
-       let size := m.size Clingo.Model.FilterFlags.selectAll
-       println! "clingo says there are {size} symbols"
-       let symbols := m.symbols
-       println! "retrieved {symbols.size} symbols"
-       for sym in Array.toList symbols do
-           println! "{sym}"
-       println! "retrieved {m.costs.size} costs"
-       for cost in m.costs do
-           println! "{cost}"
-  | Clingo.SolveEvent.StatsUpdated _s1 _s2 => do
-      println! "stats updated"
-      println! "root stat s1 {repr (_s1.type _s1.root)}"
-      println! "root stat s2 {repr (_s1.type _s2.root)}"
-  | Clingo.SolveEvent.Finished res => do
-      println! "search finished {repr res}"
-
-  return true
 
 
-def main : IO Unit := do
-   -- let _ <- Clingo.test (Except.error 3 : Except UInt32 UInt32)
+def test_control : IO Unit := do
+   let my_callback (_evt : Clingo.SolveEvent) : IO Bool := do
+       match _evt with
+       | Clingo.SolveEvent.ModelFound none => println! "found a model (none)"
+       | Clingo.SolveEvent.ModelFound (some m) =>
+            println! "found a model (some)"
+            let size := m.size Clingo.Model.FilterFlags.selectAll
+            println! "clingo says there are {size} symbols"
+            let symbols := m.symbols
+            println! "retrieved {symbols.size} symbols"
+            for sym in Array.toList symbols do
+                println! "{sym}"
+            println! "retrieved {m.costs.size} costs"
+            for cost in m.costs do
+                println! "{cost}"
+       | Clingo.SolveEvent.StatsUpdated _s1 _s2 => do
+           println! "stats updated"
+           println! "root stat s1 {repr (_s1.type _s1.root)}"
+           println! "root stat s2 {repr (_s1.type _s2.root)}"
+       | Clingo.SolveEvent.Finished res => do
+           println! "search finished {repr res}"
+
+       return true
    let Except.ok control <- Clingo.Control.mk (args := #[]) | throw (IO.userError "failed to create control")
    let Except.ok () <- control.load "./test/test.clingo" | throw (IO.userError "failed to load test file")
    let Except.ok () <- control.add "main" #[] "p(b). q(A) :- p(A)." | throw (IO.userError "failed to load expression")
+   let Except.ok () <- control.ground #[Clingo.Part.mk "base" #[]] (fun loc name args ret => pure true) | throw (IO.userError "failed to load expression")
    let Except.ok handle <- control.solve Clingo.SolveMode.Neither (#[] : Array Clingo.Literal) my_callback | throw (IO.userError "failed to solve")
    let _ <- handle.wait (-1.0)
    let Except.ok _model <- handle.model | throw (IO.userError "failed to retrieve model")
+
+def main : IO Unit := do
+   test_version
+   test_signature
+   test_symbol
    println! s!"finished!"

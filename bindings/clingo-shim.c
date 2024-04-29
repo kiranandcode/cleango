@@ -65,7 +65,7 @@ static inline lean_object * lean_mk_option_none() {
 /**
  * Clingo.Location
  */
-lean_object * lean_clingo_location_to_location(clingo_location_t *loc) {
+lean_object * lean_clingo_location_to_location(const clingo_location_t *loc) {
   lean_object *tuple =
     lean_alloc_ctor(0, 6, 0);
 
@@ -780,6 +780,63 @@ static bool lean_clingo_solve_event_callback_wrapper(clingo_solve_event_type_t t
   lean_dec_ref(result);
   return true;
 }
+
+static void clingo_grounding_callback_finaliser(void *_obj) {  }
+REGISTER_LEAN_CLASS(clingo_grounding_callback, clingo_grounding_callback_finaliser, noop_foreach)
+
+static void clingo_grounding_callback_data_finaliser(void *_obj) {  }
+REGISTER_LEAN_CLASS(clingo_grounding_callback_data, clingo_grounding_callback_data_finaliser, noop_foreach)
+
+
+lean_obj_res lean_clingo_symbol_callback_wrapper(lean_object *symbolCallbackObj, lean_object *symbolCallbackDataObj, lean_object *symbolsArrayObj) {
+  clingo_symbol_callback_t symbolCallback = lean_get_external_data(symbolCallbackObj);
+  void *symbolCallbackData = lean_get_external_data(symbolCallbackDataObj);
+
+  size_t c_symbols_size = lean_array_size(symbolsArrayObj);
+  clingo_symbol_t *c_symbols = malloc(sizeof(*c_symbols) * c_symbols_size);
+
+  lean_object **symbolsArrayPtr = lean_array_cptr(symbolsArrayObj);
+  for(size_t i = 0; i < c_symbols_size; i++) { c_symbols[i] = lean_unbox_uint64(symbolsArrayPtr[i]); }
+
+  bool success = symbolCallback(c_symbols, c_symbols_size, symbolCallbackData);
+  free(c_symbols);
+
+  if(success) {
+    return lean_io_result_mk_ok(lean_box(0));
+  } else {
+    return lean_io_result_mk_error(lean_clingo_mk_io_error());
+  }
+}
+
+bool lean_clingo_ground_event_callback_wrapper(clingo_location_t const *location, char const *name, clingo_symbol_t const *arguments, size_t arguments_size, void *data,
+                                               clingo_symbol_callback_t symbol_callback, void *symbol_callback_data) {
+    lean_object *locationObj = lean_clingo_location_to_location(location);
+    lean_object *nameObj = lean_mk_string(name);
+    lean_object *argsObj = lean_alloc_array(arguments_size, arguments_size);
+
+    lean_object **argsObjPtr = lean_array_cptr(argsObj);
+    for(size_t i = 0; i < arguments_size; i++) { argsObjPtr[i] = lean_box_uint64(arguments[i]); }
+
+    lean_object *userCallbackObj = data;
+
+    lean_object *symbolCallbackFuncObj = lean_alloc_closure(&lean_clingo_symbol_callback_wrapper, 3, 2);
+    lean_object *symbolCallbackObj = lean_alloc_external(get_clingo_grounding_callback_class(), (void *) symbol_callback);
+    lean_object *symbolCallbackDataObj = lean_alloc_external(get_clingo_grounding_callback_data_class(), (void *) symbol_callback_data);
+    
+    lean_closure_set(symbolCallbackFuncObj, 0, symbolCallbackObj);
+    lean_closure_set(symbolCallbackFuncObj, 1, symbolCallbackDataObj);
+
+    lean_object *result =  lean_apply_5(userCallbackObj, locationObj, nameObj, argsObj, symbolCallbackFuncObj, lean_io_mk_world());
+    if(lean_ptr_tag(result) == 1) {
+        lean_io_result_show_error(result);
+        lean_dec_ref(result);
+        return false;
+    } else {
+        bool success = lean_unbox(lean_io_result_get_value(result));
+        lean_dec_ref(result);
+        return success;
+    }
+}
 /* * Control
  ============================================================
 */ 
@@ -899,6 +956,47 @@ lean_obj_res lean_clingo_control_interrupt(lean_object *controlObj) {
 
   return lean_io_result_mk_ok(lean_mk_except_ok(lean_box(0)));
 }
+
+
+/* Clingo.Control.ground:
+    @& Control -> (parts: @& Array (@& Part)) -> (callback: @& GroundCallback) -> IO (Except Error Unit) */
+lean_obj_res lean_clingo_control_ground(lean_object *controlObj, lean_object *partsObj, lean_object *groundCallbackObj) {
+  clingo_control_t *control = lean_get_external_data(controlObj);
+
+  lean_array_object *partsArrayObj = lean_to_array(partsObj);
+
+  size_t c_parts_size = partsArrayObj->m_size;
+  clingo_part_t *c_parts=malloc(sizeof(*c_parts) * c_parts_size);
+  assert(c_parts != NULL);
+
+  for(size_t i = 0; i < c_parts_size; i ++) {
+    lean_object *obj = partsArrayObj->m_data[i];
+    c_parts[i].name = lean_string_cstr(lean_ctor_get(obj, 0));
+
+    lean_array_object *paramsArrayObj = lean_to_array(lean_ctor_get(obj, 1));
+    size_t c_params_size = paramsArrayObj->m_size;
+    c_parts[i].size = c_params_size;
+
+    clingo_symbol_t *c_params = malloc(sizeof(*c_params) * c_params_size);
+    assert(c_params != NULL);
+    for(size_t i = 0; i < c_params_size; i ++) { c_params[i] = lean_unbox_uint64(paramsArrayObj->m_data[i]);}
+    c_parts[i].params = c_params;
+  }
+
+  bool success =
+    clingo_control_ground(control, c_parts, c_parts_size, &lean_clingo_ground_event_callback_wrapper, groundCallbackObj);
+  for(size_t i = 0; i < c_parts_size; i ++) {
+    free((void *)c_parts[i].params);
+  }
+  free((void *)c_parts);
+
+  if(success) {
+    return lean_io_result_mk_ok(lean_mk_except_ok(lean_box(0)));
+  } else {
+    return lean_io_result_mk_ok(lean_mk_clingo_error());
+  }
+}
+
 
 
 /* Clingo.Control.solve:
