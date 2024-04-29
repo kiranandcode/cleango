@@ -87,11 +87,12 @@ lean_object * lean_clingo_location_to_location(clingo_location_t *loc) {
 }
 
 lean_object *lean_clingo_solve_result_to_solve_result(clingo_solve_result_bitset_t result) {
-  lean_object *resultObj = lean_alloc_ctor(0, 4, 0);
-  lean_ctor_set(resultObj, 0, lean_box(result & clingo_solve_result_satisfiable));
-  lean_ctor_set(resultObj, 1, lean_box(result & clingo_solve_result_unsatisfiable));
-  lean_ctor_set(resultObj, 2, lean_box(result & clingo_solve_result_exhausted));
-  lean_ctor_set(resultObj, 3, lean_box(result & clingo_solve_result_interrupted));
+  lean_object *resultObj = lean_alloc_ctor(0, 0, 4);
+  uint8_t *scalarPtr =  lean_ctor_scalar_cptr(resultObj);
+  scalarPtr[0] = (result & clingo_solve_result_satisfiable);
+  scalarPtr[1] = (result & clingo_solve_result_unsatisfiable);
+  scalarPtr[2] = (result & clingo_solve_result_exhausted);
+  scalarPtr[3] = (result & clingo_solve_result_interrupted);
   return resultObj;
 }
 
@@ -419,11 +420,6 @@ uint64_t lean_clingo_symbol_hash(uint64_t a) {
 }
 
 
-/* * Solve Handle
- ============================================================ */
-static void clingo_solve_handle_finaliser(void *_obj) {  }
-REGISTER_LEAN_CLASS(clingo_solve_handle, clingo_solve_handle_finaliser, noop_foreach)
-
 /* * Statistics
  ============================================================ */
 static void clingo_statistics_finaliser(void *_obj) {  }
@@ -543,13 +539,13 @@ uint64_t lean_clingo_model_number(lean_object *modelObj) {
 
 clingo_show_type_bitset_t lean_clingo_calculate_flags(lean_object *filterFlags) {
   clingo_show_type_bitset_t show = 0;
-  printf("num objs: %d\n", lean_ctor_num_scalars(filterFlags));
-  if(lean_unbox(lean_ctor_get(filterFlags, 0))) show |= clingo_show_type_csp;
-  if(lean_unbox(lean_ctor_get(filterFlags, 1))) show |= clingo_show_type_shown;
-  if(lean_unbox(lean_ctor_get(filterFlags, 2))) show |= clingo_show_type_atoms;
-  if(lean_unbox(lean_ctor_get(filterFlags, 3))) show |= clingo_show_type_terms;
-  if(lean_unbox(lean_ctor_get(filterFlags, 4))) show |= clingo_show_type_all;
-  if(lean_unbox(lean_ctor_get(filterFlags, 5))) show |= clingo_show_type_complement;
+  uint8_t *flags = lean_ctor_scalar_cptr(filterFlags);
+  if(flags[0]) show |= clingo_show_type_csp;
+  if(flags[1]) show |= clingo_show_type_shown;
+  if(flags[2]) show |= clingo_show_type_atoms;
+  if(flags[3]) show |= clingo_show_type_terms;
+  if(flags[4]) show |= clingo_show_type_all;
+  if(flags[5]) show |= clingo_show_type_complement;
   return show;
 }
 
@@ -648,6 +644,83 @@ uint8_t lean_clingo_model_optimality_proven(lean_object *modelObj) {
 }
 
 
+/* * Solve Handle
+ ============================================================ */
+static void clingo_solve_handle_finaliser(void *_obj) {  }
+REGISTER_LEAN_CLASS(clingo_solve_handle, clingo_solve_handle_finaliser, noop_foreach)
+
+/* Clingo.SolveHandle.get: @& SolveHandle -> IO (Except (Error × String) SolveResult) */
+lean_obj_res lean_clingo_solve_handle_get(lean_object *solveHandleObj) {
+  clingo_solve_handle_t *solveHandle = lean_get_external_data(solveHandleObj);
+  clingo_solve_result_bitset_t result;
+
+  bool success = clingo_solve_handle_get(solveHandle, &result);
+  if(success) {
+    lean_object *solveResultObj = lean_clingo_solve_result_to_solve_result(result);
+    return lean_io_result_mk_ok(lean_mk_except_ok(solveResultObj));
+  } else {
+    return lean_io_result_mk_ok(lean_mk_except_err(lean_box(clingo_error_code())));
+  }
+}
+/* Clingo.SolveHandle.wait: @& SolveHandle -> Float -> IO Bool */
+lean_obj_res lean_clingo_solve_handle_wait(lean_object *solveHandleObj, double timeout) {
+  clingo_solve_handle_t *solveHandle = lean_get_external_data(solveHandleObj);
+  bool result;
+  clingo_solve_handle_wait(solveHandle, timeout, &result);
+  return lean_io_result_mk_ok(lean_box(result));
+}
+
+/* Clingo.SolveHandle.model: @& SolveHandle -> IO (Except (Error × String) (Option Model)) */
+lean_obj_res lean_clingo_solve_handle_model(lean_object *solveHandleObj) {
+  clingo_solve_handle_t *solveHandle = lean_get_external_data(solveHandleObj);  
+  const clingo_model_t *model;
+  bool success = clingo_solve_handle_model(solveHandle, &model);
+  if(success) {
+    if(model == NULL) {
+      return lean_io_result_mk_ok(lean_mk_except_ok(lean_box(0)));
+    } else {
+      lean_object *modelObj = lean_alloc_external(get_clingo_model_class(), (void *)model);
+      return lean_io_result_mk_ok(lean_mk_except_ok(lean_mk_option_some(modelObj)));
+    }
+  } else {
+    return lean_io_result_mk_ok(lean_mk_except_err(lean_box(clingo_error_code())));
+  }
+}
+
+/* Clingo.SolveHandle.resume: @& SolveHandle -> IO (Except (Error × String) Unit) */
+lean_obj_res lean_clingo_solve_handle_resume(lean_object *solveHandleObj) {
+  clingo_solve_handle_t *solveHandle = lean_get_external_data(solveHandleObj);  
+
+  bool success = clingo_solve_handle_resume(solveHandle);
+  if(success) {
+    return lean_io_result_mk_ok(lean_mk_except_ok(lean_box(0)));
+  } else {
+    return lean_io_result_mk_ok(lean_mk_except_err(lean_box(clingo_error_code())));
+  }  
+}
+/* Clingo.SolveHandle.cancel: @& SolveHandle -> IO (Except (Error × String) Unit) */
+lean_obj_res lean_clingo_solve_handle_cancel(lean_object *solveHandleObj) {
+  clingo_solve_handle_t *solveHandle = lean_get_external_data(solveHandleObj);  
+
+  bool success = clingo_solve_handle_cancel(solveHandle);
+  if(success) {
+    return lean_io_result_mk_ok(lean_mk_except_ok(lean_box(0)));
+  } else {
+    return lean_io_result_mk_ok(lean_mk_except_err(lean_box(clingo_error_code())));
+  }  
+}
+
+/* Clingo.SolveHandle.close: SolveHandle -> IO (Except (Error × String) Unit) */
+lean_obj_res lean_clingo_solve_handle_close(lean_object *solveHandleObj) {
+  clingo_solve_handle_t *solveHandle = lean_get_external_data(solveHandleObj);  
+
+  bool success = clingo_solve_handle_close(solveHandle);
+  if(success) {
+    return lean_io_result_mk_ok(lean_mk_except_ok(lean_box(0)));
+  } else {
+    return lean_io_result_mk_ok(lean_mk_except_err(lean_box(clingo_error_code())));
+  }  
+}
 /* * Solve Event
  ============================================================ */
 lean_object *lean_clingo_mk_solve_event_model(clingo_model_t *model) {
@@ -679,7 +752,9 @@ lean_object *lean_clingo_mk_solve_event_finish(clingo_solve_result_bitset_t *res
 
 
 static bool lean_clingo_solve_event_callback_wrapper(clingo_solve_event_type_t type, void *event, void *data, bool *goon) {
+
   lean_object *userCallback = (lean_object *)data;
+
   /* lean_object *result = lean_apply_3(userCallback, lean_box(code), lean_mk_string(message), lean_io_mk_world()); */
   lean_object *eventObj = NULL;
   switch (type) {
@@ -687,9 +762,10 @@ static bool lean_clingo_solve_event_callback_wrapper(clingo_solve_event_type_t t
     eventObj = lean_clingo_mk_solve_event_model((clingo_model_t *)event);
     break;
   case clingo_solve_event_type_statistics: 
-    eventObj = lean_clingo_mk_solve_event_stats((clingo_statistics_t **)event);
+    eventObj = lean_clingo_mk_solve_event_stats(((clingo_statistics_t **)event));
     break;
   case clingo_solve_event_type_finish: 
+
     eventObj = lean_clingo_mk_solve_event_finish((clingo_solve_result_bitset_t *)event);
     break;
   }
@@ -699,7 +775,6 @@ static bool lean_clingo_solve_event_callback_wrapper(clingo_solve_event_type_t t
       lean_io_result_show_error(result);
   } else {
     bool should_continue = lean_unbox(lean_io_result_get_value(result));
-    printf("callabck should continue: %d?\n", should_continue);
     *goon = should_continue;
   }
   lean_dec_ref(result);
@@ -841,7 +916,6 @@ lean_obj_res lean_clingo_solve(lean_object *controlObj, uint8_t solve_mode, lean
   for(size_t i = 0; i < c_assumptions_size; i ++) {
     c_assumptions[i] = lean_unbox(assumptionsArrayObj->m_data[i]);
   }
-
   bool success =
     clingo_control_solve(control, solve_mode, (const clingo_literal_t *)c_assumptions, c_assumptions_size, &lean_clingo_solve_event_callback_wrapper, solveCallbackObj, &handle);
 

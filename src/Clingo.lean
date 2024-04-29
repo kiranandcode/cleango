@@ -15,6 +15,12 @@ structure Version where
   revision : Int
 instance VersionToString : ToString Version where toString v := s!"{v.major}.{v.minor}.{v.revision}"
 
+structure Part where
+  name : String
+  params : Array String
+instance PartToString : ToString Part where toString v := s!"{v.name}({v.params})"
+
+
 @[extern "lean_clingo_version"]
 opaque version : IO Version
 
@@ -160,6 +166,9 @@ end Iterator
 
 end Symbol
 
+def SymbolCallback := Array Symbol -> IO Bool
+def GroundCallback := Location -> String -> Array Symbol -> SymbolCallback -> IO Bool
+
 opaque Model : Type
 
 inductive ModelType where | Stable | Brave | Cautious
@@ -168,13 +177,72 @@ deriving Repr, Inhabited
 namespace Model
 
 structure FilterFlags where
-   select_CSP_assignments : Bool
-   select_shown : Bool
-   select_all_atoms: Bool
-   select_all_terms: Bool
-   select_all: Bool
-   select_complement: Bool
+   CSP_assignments : Bool
+   shown : Bool
+   all_atoms: Bool
+   all_terms: Bool
+   all: Bool
+   complement: Bool
 deriving Repr, Inhabited
+
+namespace FilterFlags
+
+def selectCSPAssignments :=
+   FilterFlags.mk
+     (CSP_assignments := true)
+     (shown := false)
+     (all_atoms := false)
+     (all_terms := false)
+     (all := false)
+     (complement := false)
+
+def selectShown :=
+   FilterFlags.mk
+     (CSP_assignments := false)
+     (shown := true)
+     (all_atoms := false)
+     (all_terms := false)
+     (all := false)
+     (complement := false)
+
+def selectAllAtoms :=
+   FilterFlags.mk
+     (CSP_assignments := false)
+     (shown := false)
+     (all_atoms := true)
+     (all_terms := false)
+     (all := false)
+     (complement := false)
+
+def selectAllTerms :=
+   FilterFlags.mk
+     (CSP_assignments := false)
+     (shown := false)
+     (all_atoms := false)
+     (all_terms := true)
+     (all := false)
+     (complement := false)
+
+def selectAll :=
+   FilterFlags.mk
+     (CSP_assignments := false)
+     (shown := false)
+     (all_atoms := false)
+     (all_terms := false)
+     (all := true)
+     (complement := false)
+
+def selectComplement :=
+   FilterFlags.mk
+     (CSP_assignments := false)
+     (shown := false)
+     (all_atoms := false)
+     (all_terms := false)
+     (all := false)
+     (complement := true)
+
+end FilterFlags
+
 
 @[extern "lean_clingo_model_type"]
 opaque type: @& Model -> ModelType
@@ -183,12 +251,15 @@ opaque type: @& Model -> ModelType
 opaque id: @& Model -> UInt64
 
 @[extern "lean_clingo_model_size"]
-opaque size: @& Model -> @& FilterFlags -> USize
+private opaque size_inner: @& Model -> @& FilterFlags -> USize
+
+def size (m : @& Model ) (flags : @& FilterFlags := FilterFlags.selectAll) : USize := size_inner m flags
+
 
 @[extern "lean_clingo_model_symbols"]
 private opaque symbols_inner: @& Model -> @& FilterFlags -> Array Symbol
 
-def symbols (m : @& Model ) (flags : @& FilterFlags := default) : Array Symbol := symbols_inner m flags
+def symbols (m : @& Model ) (flags : @& FilterFlags := FilterFlags.selectAll) : Array Symbol := symbols_inner m flags
 
 @[extern "lean_clingo_model_contains"]
 opaque contains?: @& Model -> Atom -> Bool
@@ -244,7 +315,7 @@ structure SolveResult where
   unsatisfiable : Bool
   exhausted : Bool
   interrupted : Bool
-deriving Repr
+deriving Repr, Inhabited
 
 inductive SolveMode where | Neither | Async | Yield | AsyncYield
 
@@ -259,6 +330,25 @@ def SolveEventCallback := SolveEvent -> IO Bool
 opaque SolveHandle : Type
 
 namespace SolveHandle
+
+@[extern "lean_clingo_solve_handle_get"]
+opaque get: @& SolveHandle -> IO (Except (Error × String) SolveResult)
+
+@[extern "lean_clingo_solve_handle_wait"]
+opaque wait: @& SolveHandle -> @& Float -> IO Bool
+
+@[extern "lean_clingo_solve_handle_model"]
+opaque model: @& SolveHandle -> IO (Except (Error × String) (Option Model))
+
+@[extern "lean_clingo_solve_handle_resume"]
+opaque resume: @& SolveHandle -> IO (Except (Error × String) Unit)
+
+@[extern "lean_clingo_solve_handle_cancel"]
+opaque cancel: @& SolveHandle -> IO (Except (Error × String) Unit)
+
+@[extern "lean_clingo_solve_handle_close"]
+opaque close: SolveHandle -> IO (Except (Error × String) Unit)
+
 end SolveHandle
 
 
@@ -285,8 +375,8 @@ opaque load: @& Control -> @& String -> IO (Except (Prod Error String) Unit)
 @[extern "lean_clingo_control_add"]
 opaque add : @& Control -> (name : @& String) -> (params: @& Array String) -> (program: @& String) -> IO (Except Error Unit)
 
--- @[extern "lean_clingo_control_ground"]
--- opaque ground : @& Control -> (name : @& String) -> (parts: @& Array (@& Part)) -> (callback: @& GroundCallback) -> IO (Except Error Unit)
+@[extern "lean_clingo_control_ground"]
+opaque ground : @& Control -> (parts: @& Array (@& Part)) -> (callback: @& GroundCallback) -> IO (Except Error Unit)
 
 @[extern "lean_clingo_solve"]
 opaque solve: @& Control -> SolveMode -> @& Array Literal -> SolveEventCallback -> IO (Except Error SolveHandle)
