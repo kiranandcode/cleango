@@ -535,12 +535,15 @@ typedef struct clingo_symbolic_atoms clingo_symbolic_atoms_t;
 //! ::clingo_control_cleanup(), and functions that modify the underlying
 //! non-ground program.
 typedef uint64_t clingo_symbolic_atom_iterator_t;
+
 //! Get the number of different atoms occurring in a logic program.
 //!
 //! @param[in] atoms the target
 //! @param[out] size the number of atoms
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_size(clingo_symbolic_atoms_t const *atoms, size_t *size);
+
+
 //! Get a forward iterator to the beginning of the sequence of all symbolic
 //! atoms optionally restricted to a given signature.
 //!
@@ -549,12 +552,16 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_size(clingo_symbolic_atoms_
 //! @param[out] iterator the resulting iterator
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_begin(clingo_symbolic_atoms_t const *atoms, clingo_signature_t const *signature, clingo_symbolic_atom_iterator_t *iterator);
+
+
 //! Iterator pointing to the end of the sequence of symbolic atoms.
 //!
 //! @param[in] atoms the target
 //! @param[out] iterator the resulting iterator
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_end(clingo_symbolic_atoms_t const *atoms, clingo_symbolic_atom_iterator_t *iterator);
+
+
 //! Find a symbolic atom given its symbolic representation.
 //!
 //! @param[in] atoms the target
@@ -563,6 +570,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_end(clingo_symbolic_atoms_t
 //! of the sequence if no corresponding atom is found
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_find(clingo_symbolic_atoms_t const *atoms, clingo_symbol_t symbol, clingo_symbolic_atom_iterator_t *iterator);
+
+
 //! Check if two iterators point to the same element (or end of the sequence).
 //!
 //! @param[in] atoms the target
@@ -571,6 +580,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_find(clingo_symbolic_atoms_
 //! @param[out] equal whether the two iterators are equal
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_iterator_is_equal_to(clingo_symbolic_atoms_t const *atoms, clingo_symbolic_atom_iterator_t a, clingo_symbolic_atom_iterator_t b, bool *equal);
+
+
 //! Get the symbolic representation of an atom.
 //!
 //! @param[in] atoms the target
@@ -578,6 +589,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_iterator_is_equal_to(clingo
 //! @param[out] symbol the resulting symbol
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_symbol(clingo_symbolic_atoms_t const *atoms, clingo_symbolic_atom_iterator_t iterator, clingo_symbol_t *symbol);
+
+
 //! Check whether an atom is a fact.
 //!
 //! @note This does not determine if an atom is a cautious consequence. The
@@ -589,6 +602,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_symbol(clingo_symbolic_atom
 //! @param[out] fact whether the atom is a fact
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_is_fact(clingo_symbolic_atoms_t const *atoms, clingo_symbolic_atom_iterator_t iterator, bool *fact);
+
+
 //! Check whether an atom is external.
 //!
 //! An atom is external if it has been defined using an external directive and
@@ -599,6 +614,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_is_fact(clingo_symbolic_ato
 //! @param[out] external whether the atom is a external
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_is_external(clingo_symbolic_atoms_t const *atoms, clingo_symbolic_atom_iterator_t iterator, bool *external);
+
+
 //! Returns the (numeric) aspif literal corresponding to the given symbolic atom.
 //!
 //! Such a literal can be mapped to a solver literal (see the \ref Propagator
@@ -610,12 +627,16 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_is_external(clingo_symbolic
 //! @param[out] literal the associated literal
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_literal(clingo_symbolic_atoms_t const *atoms, clingo_symbolic_atom_iterator_t iterator, clingo_literal_t *literal);
+
+
 //! Get the number of different predicate signatures used in the program.
 //!
 //! @param[in] atoms the target
 //! @param[out] size the number of signatures
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_signatures_size(clingo_symbolic_atoms_t const *atoms, size_t *size);
+
+
 //! Get the predicate signatures occurring in a logic program.
 //!
 //! @param[in] atoms the target
@@ -627,6 +648,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_signatures_size(clingo_symb
 //!
 //! @see clingo_symbolic_atoms_signatures_size()
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_signatures(clingo_symbolic_atoms_t const *atoms, clingo_signature_t *signatures, size_t size);
+
+
 //! Get an iterator to the next element in the sequence of symbolic atoms.
 //!
 //! @param[in] atoms the target
@@ -634,6 +657,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_signatures(clingo_symbolic_
 //! @param[out] next the succeeding iterator
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_next(clingo_symbolic_atoms_t const *atoms, clingo_symbolic_atom_iterator_t iterator, clingo_symbolic_atom_iterator_t *next);
+
+
 //! Check whether the given iterator points to some element with the sequence
 //! of symbolic atoms or to the end of the sequence.
 //!
@@ -643,6 +668,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_next(clingo_symbolic_atoms_
 //! sequence
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_symbolic_atoms_is_valid(clingo_symbolic_atoms_t const *atoms, clingo_symbolic_atom_iterator_t iterator, bool *valid);
+
+
 
 //! Callback function to inject symbols.
 //!
@@ -720,6 +747,8 @@ typedef struct clingo_theory_atoms clingo_theory_atoms_t;
 //! @param[out] type the resulting type
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_type(clingo_theory_atoms_t const *atoms, clingo_id_t term, clingo_theory_term_type_t *type);
+
+
 //! Get the number of the given numeric theory term.
 //!
 //! @pre The term must be of type ::clingo_theory_term_type_number.
@@ -728,6 +757,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_type(clingo_theory_atoms
 //! @param[out] number the resulting number
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_number(clingo_theory_atoms_t const *atoms, clingo_id_t term, int *number);
+
+
 //! Get the name of the given constant or function theory term.
 //!
 //! @pre The term must be of type ::clingo_theory_term_type_function or ::clingo_theory_term_type_symbol.
@@ -736,6 +767,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_number(clingo_theory_ato
 //! @param[out] name the resulting name
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_name(clingo_theory_atoms_t const *atoms, clingo_id_t term, char const **name);
+
+
 //! Get the arguments of the given function theory term.
 //!
 //! @pre The term must be of type ::clingo_theory_term_type_function.
@@ -745,6 +778,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_name(clingo_theory_atoms
 //! @param[out] size the number of arguments
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_arguments(clingo_theory_atoms_t const *atoms, clingo_id_t term, clingo_id_t const **arguments, size_t *size);
+
+
 //! Get the size of the string representation of the given theory term (including the terminating 0).
 //!
 //! @param[in] atoms container where the term is stored
@@ -753,6 +788,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_arguments(clingo_theory_
 //! @return whether the call was successful; might set one of the following error codes:
 //! - ::clingo_error_bad_alloc
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_to_string_size(clingo_theory_atoms_t const *atoms, clingo_id_t term, size_t *size);
+
+
 //! Get the string representation of the given theory term.
 //!
 //! @param[in] atoms container where the term is stored
@@ -765,6 +802,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_to_string_size(clingo_th
 //!
 //! @see clingo_theory_atoms_term_to_string_size()
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_to_string(clingo_theory_atoms_t const *atoms, clingo_id_t term, char *string, size_t size);
+
+
 //! @}
 
 //! @name Theory Element Inspection
@@ -778,6 +817,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_term_to_string(clingo_theory_
 //! @param[out] size the number of term ids
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_element_tuple(clingo_theory_atoms_t const *atoms, clingo_id_t element, clingo_id_t const **tuple, size_t *size);
+
+
 //! Get the condition (array of aspif literals) of the given theory element.
 //!
 //! @param[in] atoms container where the element is stored
@@ -786,6 +827,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_element_tuple(clingo_theory_a
 //! @param[out] size the number of term literals
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_element_condition(clingo_theory_atoms_t const *atoms, clingo_id_t element, clingo_literal_t const **condition, size_t *size);
+
+
 //! Get the id of the condition of the given theory element.
 //!
 //! @note
@@ -798,6 +841,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_element_condition(clingo_theo
 //! @param[out] condition the resulting condition id
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_element_condition_id(clingo_theory_atoms_t const *atoms, clingo_id_t element, clingo_literal_t *condition);
+
+
 //! Get the size of the string representation of the given theory element (including the terminating 0).
 //!
 //! @param[in] atoms container where the element is stored
@@ -806,6 +851,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_element_condition_id(clingo_t
 //! @return whether the call was successful; might set one of the following error codes:
 //! - ::clingo_error_bad_alloc
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_element_to_string_size(clingo_theory_atoms_t const *atoms, clingo_id_t element, size_t *size);
+
+
 //! Get the string representation of the given theory element.
 //!
 //! @param[in] atoms container where the element is stored
@@ -816,6 +863,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_element_to_string_size(clingo
 //! - ::clingo_error_runtime if the size is too small
 //! - ::clingo_error_bad_alloc
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_element_to_string(clingo_theory_atoms_t const *atoms, clingo_id_t element, char *string, size_t size);
+
+
 //! @}
 
 //! @name Theory Atom Inspection
@@ -827,6 +876,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_element_to_string(clingo_theo
 //! @param[out] size the resulting number
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_size(clingo_theory_atoms_t const *atoms, size_t *size);
+
+
 //! Get the theory term associated with the theory atom.
 //!
 //! @param[in] atoms container where the atom is stored
@@ -834,6 +885,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_size(clingo_theory_atoms_t co
 //! @param[out] term the resulting term id
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_term(clingo_theory_atoms_t const *atoms, clingo_id_t atom, clingo_id_t *term);
+
+
 //! Get the theory elements associated with the theory atom.
 //!
 //! @param[in] atoms container where the atom is stored
@@ -842,6 +895,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_term(clingo_theory_atoms
 //! @param[out] size the number of elements
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_elements(clingo_theory_atoms_t const *atoms, clingo_id_t atom, clingo_id_t const **elements, size_t *size);
+
+
 //! Whether the theory atom has a guard.
 //!
 //! @param[in] atoms container where the atom is stored
@@ -849,6 +904,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_elements(clingo_theory_a
 //! @param[out] has_guard whether the theory atom has a guard
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_has_guard(clingo_theory_atoms_t const *atoms, clingo_id_t atom, bool *has_guard);
+
+
 //! Get the guard consisting of a theory operator and a theory term of the given theory atom.
 //!
 //! @param[in] atoms container where the atom is stored
@@ -857,6 +914,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_has_guard(clingo_theory_
 //! @param[out] term the resulting term
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_guard(clingo_theory_atoms_t const *atoms, clingo_id_t atom, char const **connective, clingo_id_t *term);
+
+
 //! Get the aspif literal associated with the given theory atom.
 //!
 //! @param[in] atoms container where the atom is stored
@@ -864,6 +923,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_guard(clingo_theory_atom
 //! @param[out] literal the resulting literal
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_literal(clingo_theory_atoms_t const *atoms, clingo_id_t atom, clingo_literal_t *literal);
+
+
 //! Get the size of the string representation of the given theory atom (including the terminating 0).
 //!
 //! @param[in] atoms container where the atom is stored
@@ -872,6 +933,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_literal(clingo_theory_at
 //! @return whether the call was successful; might set one of the following error codes:
 //! - ::clingo_error_bad_alloc
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_to_string_size(clingo_theory_atoms_t const *atoms, clingo_id_t atom, size_t *size);
+
+
 //! Get the string representation of the given theory atom.
 //!
 //! @param[in] atoms container where the atom is stored
@@ -882,6 +945,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_to_string_size(clingo_th
 //! - ::clingo_error_runtime if the size is too small
 //! - ::clingo_error_bad_alloc
 CLINGO_VISIBILITY_DEFAULT bool clingo_theory_atoms_atom_to_string(clingo_theory_atoms_t const *atoms, clingo_id_t atom, char *string, size_t size);
+
+
 //! @}
 
 //! @}
@@ -928,6 +993,8 @@ typedef struct clingo_assignment clingo_assignment_t;
 //! @param[in] assignment the target assignment
 //! @return the decision level
 CLINGO_VISIBILITY_DEFAULT uint32_t clingo_assignment_decision_level(clingo_assignment_t const *assignment);
+
+
 //! Get the current root level.
 //!
 //! Decisions levels smaller or equal to the root level are not backtracked during solving.
@@ -935,17 +1002,23 @@ CLINGO_VISIBILITY_DEFAULT uint32_t clingo_assignment_decision_level(clingo_assig
 //! @param[in] assignment the target assignment
 //! @return the decision level
 CLINGO_VISIBILITY_DEFAULT uint32_t clingo_assignment_root_level(clingo_assignment_t const *assignment);
+
+
 //! Check if the given assignment is conflicting.
 //!
 //! @param[in] assignment the target assignment
 //! @return whether the assignment is conflicting
 CLINGO_VISIBILITY_DEFAULT bool clingo_assignment_has_conflict(clingo_assignment_t const *assignment);
+
+
 //! Check if the given literal is part of a (partial) assignment.
 //!
 //! @param[in] assignment the target assignment
 //! @param[in] literal the literal
 //! @return whether the literal is valid
 CLINGO_VISIBILITY_DEFAULT bool clingo_assignment_has_literal(clingo_assignment_t const *assignment, clingo_literal_t literal);
+
+
 //! Determine the decision level of a given literal.
 //!
 //! @param[in] assignment the target assignment
@@ -953,6 +1026,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_assignment_has_literal(clingo_assignment_t
 //! @param[out] level the resulting level
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_assignment_level(clingo_assignment_t const *assignment, clingo_literal_t literal, uint32_t *level);
+
+
 //! Determine the decision literal given a decision level.
 //!
 //! @param[in] assignment the target assignment
@@ -960,6 +1035,8 @@ CLINGO_VISIBILITY_DEFAULT bool clingo_assignment_level(clingo_assignment_t const
 //! @param[out] literal the resulting literal
 //! @return whether the call was successful
 CLINGO_VISIBILITY_DEFAULT bool clingo_assignment_decision(clingo_assignment_t const *assignment, uint32_t level, clingo_literal_t *literal);
+
+
 //! Check if a literal has a fixed truth value.
 //!
 //! @param[in] assignment the target assignment

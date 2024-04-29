@@ -36,9 +36,12 @@ def main : IO Unit := do
    let sym <- Clingo.Symbol.mk_id "hello" true
    println! "made a id symbol {sym}"
    println! "type is {repr sym.type}"
+   println! "hash is {sym.hash}"
 
    let sym <- Clingo.Symbol.mk_fun "hello" #[sym] true
    println! "made a fun symbol {sym}"
    println! "the name is {sym.name?}"
    println! "args are {sym.args?}"
    println! "type is {repr sym.type}"
+   let _control <- Clingo.Control.mk (args := #["--help"])
+   println! s!"finished! {((UInt64.shiftLeft 1 63) + ((UInt64.shiftLeft 1 63) - 2) : UInt64)} {repr _control}"

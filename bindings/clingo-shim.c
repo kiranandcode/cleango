@@ -2,6 +2,11 @@
 #include <stdio.h>
 #include "clingo.h"
 
+/* * Utilities
+ ============================================================
+*/ 
+inline static void noop_foreach(void *mod, b_lean_obj_arg fn) {}
+
 /**
  * Except.ok a
  */
@@ -63,6 +68,18 @@ lean_object * lean_clingo_location_to_location(clingo_location_t *loc) {
   return tuple;
 }
 
+#define REGISTER_LEAN_CLASS(NAME, FINALISER, FOREACH) \
+  static lean_external_class * g_ ## NAME ## _class; \
+  static lean_external_class * get_ ## NAME ## _class() { \
+     if(g_ ## NAME ## _class == NULL) { g_ ## NAME ## _class = lean_register_external_class(&FINALISER,&FOREACH); } \
+     return g_ ## NAME ## _class; \
+  }
+
+
+/* * Clingo Utilities
+ ============================================================
+*/ 
+
 
 /* Clingo.version : IO (Int × Int × Int)  */
 lean_obj_res lean_clingo_version() {
@@ -83,6 +100,8 @@ lean_obj_res lean_clingo_version() {
   return lean_io_result_mk_ok(tuple);
 }
 
+
+
 /* Clingo.error_code : IO Clingo.Error */
 lean_obj_res lean_clingo_error_code() {
   return lean_io_result_mk_ok(lean_box(clingo_error_code()));
@@ -97,11 +116,40 @@ lean_obj_res lean_clingo_error_message() {
   return lean_io_result_mk_ok(lean_mk_option_some(lean_mk_string(str)));
 }
 
-lean_obj_res lean_test(lean_object *obj) {
-  printf("tag of excpt is %u\n", obj->m_tag);
-  printf("contents of excpt is %u\n", (uint32_t)lean_unbox(lean_ctor_get(obj, 0)));
-  return lean_io_result_mk_ok(lean_box(0));
+lean_obj_res lean_clingo_mk_io_error() {
+  char const *str = clingo_error_message();
+  if(str == NULL) { str = "no further details"; }
+  switch (clingo_error_code()) {
+      case clingo_error_success:
+        return lean_mk_io_error_other_error(0, lean_mk_string(str));
+      case clingo_error_logic:
+      case clingo_error_runtime:
+        return lean_mk_io_user_error(lean_mk_string(str));
+      case clingo_error_bad_alloc:
+        return lean_mk_io_error_resource_exhausted(0, lean_mk_string(str));
+      case clingo_error_unknown:
+      default:
+        return lean_mk_io_error_other_error(1, lean_mk_string(str));
+  }
 }
+
+
+
+/* * Logger */
+static void lean_clingo_logger_callback_wrapper(clingo_warning_t code, char const *message, void *data) {
+  lean_object *userCallback = (lean_object *)data;
+  lean_object *result = lean_apply_3(userCallback, lean_box(code), lean_mk_string(message), lean_io_mk_world());
+  if(lean_ptr_tag(result) == 1) {
+      lean_io_result_show_error(result);
+  }
+  lean_dec_ref(result);
+  return;
+
+}
+/* * Signature
+ ============================================================
+*/ 
+
 
 /* Clingo.Signature.mk : String -> Int -> Bool -> Except String Signature */
 lean_obj_res lean_clingo_signature_mk(lean_object *str, uint32_t arity, uint8_t is_positive) {
@@ -156,6 +204,10 @@ uint64_t lean_clingo_signature_hash(uint64_t a) {
   size_t hash = clingo_signature_hash(a);
   return hash;
 }
+
+/* * Symbol
+ ============================================================
+*/ 
 
 /* Clingo.Symbol.mk_number : Int -> IO Symbol  */
 lean_obj_res lean_clingo_symbol_mk_number(lean_object *number) {
@@ -328,3 +380,91 @@ uint8_t lean_clingo_symbol_blt(uint64_t a, uint64_t b) {
   bool equal = clingo_symbol_is_less_than(a, b);
   return equal;
 }
+
+/* Clingo.Symbol.hash : Symbol -> Uint64 */
+uint64_t lean_clingo_symbol_hash(uint64_t a) {
+  size_t hash = clingo_symbol_hash(a);
+  return hash;
+}
+
+static lean_external_class *g_clingo_symbolic_atoms_class;
+
+static void clingo_symbolic_atoms_finaliser(void *obj) {}
+
+static lean_external_class *get_clingo_symbolic_atoms_class()
+{
+  if(g_clingo_symbolic_atoms_class == NULL) {
+    g_clingo_symbolic_atoms_class =
+      lean_register_external_class(
+         &clingo_symbolic_atoms_finaliser,
+         &noop_foreach
+      );
+  }
+  return g_clingo_symbolic_atoms_class;
+}
+
+/* * Control
+ ============================================================
+*/ 
+
+static void clingo_control_finaliser(void *obj); 
+REGISTER_LEAN_CLASS(clingo_control, clingo_control_finaliser, noop_foreach)
+static void clingo_control_finaliser(void *obj) { clingo_control_free((clingo_control_t *) obj); }
+
+lean_obj_res lean_clingo_control_mk_unsafe(lean_object *args, lean_object *logger, uint64_t message_limit) {
+  clingo_control_t *control = NULL;
+  lean_array_object *argsObj = lean_to_array(args);
+  size_t c_args_size = argsObj->m_size;
+  const char **c_args = malloc(sizeof(*c_args) * c_args_size);
+  for(size_t i = 0; i < c_args_size; i++) { c_args[i] = lean_string_cstr(argsObj->m_data[i]); };
+  lean_inc_ref(logger);
+  bool success =
+    clingo_control_new(
+         (const char * const*)c_args,
+         c_args_size,
+         &lean_clingo_logger_callback_wrapper,
+         (void *)logger,
+         message_limit,
+         &control
+    );
+  free((void *)c_args);
+  if(success) {
+    lean_object *result = lean_alloc_external(get_clingo_control_class(), control);    
+    return lean_io_result_mk_ok(result);
+  } else {
+    return lean_io_result_mk_error(lean_clingo_mk_io_error());
+  }
+}
+
+lean_obj_res lean_clingo_control_mk_safe(lean_object *args, lean_object *logger, uint64_t message_limit) {
+  clingo_control_t *control = NULL;
+  lean_array_object *argsObj = lean_to_array(args);
+  size_t c_args_size = argsObj->m_size;
+  const char **c_args = malloc(sizeof(*c_args) * c_args_size);
+  for(size_t i = 0; i < c_args_size; i++) { c_args[i] = lean_string_cstr(argsObj->m_data[i]); };
+  lean_inc_ref(logger);
+  bool success =
+    clingo_control_new(
+         (const char * const*)c_args,
+         c_args_size,
+         &lean_clingo_logger_callback_wrapper,
+         (void *)logger,
+         message_limit,
+         &control
+    );
+  free((void *)c_args);
+  if(success) {
+    lean_object *result = lean_alloc_external(get_clingo_control_class(), control);    
+    return lean_io_result_mk_ok(lean_mk_except_ok(result));
+  } else {
+    return lean_io_result_mk_ok(lean_mk_except_err(lean_box(clingo_error_code())));
+  }
+}
+
+
+/* lean_obj_res lean_test(lean_object *obj) { */
+/*   printf("calling lean test!\n"); */
+/*   lean_clingo_logger_callback_wrapper(clingo_warning_runtime_error, "hello", obj); */
+/*   return lean_io_result_mk_ok(lean_box(0)); */
+/* } */
+

@@ -1,6 +1,13 @@
 open Lean
 
 namespace Clingo
+inductive Error where | success | runtime | logic | badAlloc | unknown
+deriving Repr
+
+end Clingo
+
+namespace Clingo
+private def max_uint64 := (UInt64.shiftLeft 1 63) + ((UInt64.shiftLeft 1 63) - 2)
 
 structure Version where
   major : Int
@@ -16,8 +23,6 @@ abbrev Atom := UInt32
 abbrev Id := UInt32
 abbrev Weight := UInt32
 
-inductive Error where | success | runtime | logic | badAlloc | unknown
-deriving Repr
 
 @[extern "lean_clingo_error_code"]
 opaque error_code : IO Error
@@ -27,6 +32,8 @@ opaque error_message : IO (Option String)
 
 inductive Warning where | undefinedOperation | runtimeError | undefinedAtom | fileIncludedMultipleTimes | unboundVariable | globalVariableInTupleOfAggregate | other
 deriving Repr
+
+def Logger := Warning -> String -> IO Unit 
 
 inductive TruthValue where | free | true | false
 deriving Repr
@@ -77,8 +84,6 @@ instance SignatureBeq : BEq Signature where beq := beq
 
 end Signature
 
--- @[extern "lean_test"]
--- opaque test : Except Uint32 UInt32 -> IO Unit
 
 inductive SymbolType where | Infimum | Number | String | Function | Supremum
 deriving Repr, Inhabited
@@ -140,7 +145,46 @@ instance SignatureBeq : BEq Symbol where beq := beq
 @[extern "lean_clingo_symbol_blt"]
 opaque blt (s1 : Symbol) (s2 : Symbol) : Bool
 
+@[extern "lean_clingo_signature_hash"]
+opaque hash (s1 : Symbol) : UInt64
+
+
+def Iterator := UInt64
+deriving Repr
+
+namespace Iterator
+
+end Iterator
+
 end Symbol
+
+
+private opaque ControlP : NonemptyType
+
+def Control := ControlP.type
+
+namespace Control
+
+@[extern "lean_clingo_control_mk_unsafe"]
+private opaque mk_unsafe : @& Array String -> Logger -> UInt64 ->  IO Control
+
+@[extern "lean_clingo_control_mk_safe"]
+private opaque mk_safe : @& Array String -> Logger -> UInt64 ->  IO (Except Error Control)
+
+def mk(args : @& Array String := #[]) (logger : Logger := fun _ _ => return ()) (limit : UInt64 := max_uint64) :=
+  mk_safe args logger limit
+
+def mk! (args : @& Array String := #[]) (logger : Logger := fun _ _ => return ()) (limit : UInt64 := max_uint64) :=
+  mk_unsafe args logger limit
+
+opaque add : Control -> (name : String) -> (params: @& Array String) -> (String) -> IO Unit
+
+instance : Repr Control where
+   reprPrec _ _ := s!"(Clingo.Control.mk)"
+
+end Control
+
+
 
 
 end Clingo
