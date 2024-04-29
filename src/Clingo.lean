@@ -18,7 +18,9 @@ instance VersionToString : ToString Version where toString v := s!"{v.major}.{v.
 @[extern "lean_clingo_version"]
 opaque version : IO Version
 
-abbrev Literal := Int
+def Literal := UInt32
+deriving Repr
+
 abbrev Atom := UInt32
 abbrev Id := UInt32
 abbrev Weight := UInt32
@@ -158,9 +160,62 @@ end Iterator
 
 end Symbol
 
+private opaque SymbolsP : NonemptyType
+def Symbols := SymbolsP.type
+
+namespace Symbols
+end Symbols
+
+
+private opaque ModelP : NonemptyType
+def Model := ModelP.type
+
+inductive ModelType where | Stable | Brave | Cautious
+deriving Repr, Inhabited
+
+
+namespace Model
+
+structure FilterFlags where
+   select_CSP_assignments : Bool
+   select_shown : Bool
+   select_all_atoms: Bool
+   select_all_terms: Bool
+   select_all: Bool
+   select_complement: Bool
+
+@[extern "lean_clingo_model_type"]
+opaque type: @& Model -> ModelType
+
+@[extern "lean_clingo_model_number"]
+opaque id: @& Model -> UInt64
+
+@[extern "lean_clingo_model_size"]
+opaque size: @& Model -> @& FilterFlags -> USize
+
+@[extern "lean_clingo_model_symbols"]
+opaque symbols: @& Model -> @& FilterFlags -> Symbols
+
+@[extern "lean_clingo_model_contains"]
+opaque contains?: @& Model -> Atom -> Bool
+
+@[extern "lean_clingo_model_is_true"]
+opaque is_true?: @& Model -> Literal -> Bool
+
+@[extern "lean_clingo_model_costs"]
+opaque consts: @& Model -> Array UInt64
+
+@[extern "lean_clingo_model_optimality_proven"]
+opaque optimal?: @& Model -> Bool
+
+end Model
+
+inductive SolveMode where | Neither | Async | Yield | AsyncYield
+
+inductive SolveEvent where | ModelFound (m : Model)  | StatsUpdated (perStep : Stats) (accum : Stats) | Finished (res: SolveResult)
+def SolveEventCallback := SolveEvent -> IO Bool
 
 private opaque ControlP : NonemptyType
-
 def Control := ControlP.type
 
 namespace Control
@@ -177,7 +232,16 @@ def mk(args : @& Array String := #[]) (logger : Logger := fun _ _ => return ()) 
 def mk! (args : @& Array String := #[]) (logger : Logger := fun _ _ => return ()) (limit : UInt64 := max_uint64) :=
   mk_unsafe args logger limit
 
-opaque add : Control -> (name : String) -> (params: @& Array String) -> (String) -> IO Unit
+@[extern "lean_clingo_control_load"]
+opaque load: @& Control -> @& String -> IO (Except (Prod Error String) Unit)
+
+@[extern "lean_clingo_control_add"]
+opaque add : @& Control -> (name : @& String) -> (params: @& Array String) -> (program: @& String) -> IO (Except Error Unit)
+
+-- @[extern "lean_clingo_control_ground"]
+-- opaque ground : @& Control -> (name : @& String) -> (parts: @& Array (@& Part)) -> (callback: @& GroundCallback) -> IO (Except Error Unit)
+
+opaque solve: @& Control -> SolveMode -> (assumptions : @& Array (@& Literal)) -> SolveEventCallback -> IO (Except Error SolveHandle)
 
 instance : Repr Control where
    reprPrec _ _ := s!"(Clingo.Control.mk)"

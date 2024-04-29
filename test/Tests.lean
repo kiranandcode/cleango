@@ -13,9 +13,8 @@ def test_signature : IO Unit := do
    {Clingo.Signature.isPositive test}, refl eq {test == test},
    {test.hash}"
 
-def main : IO Unit := do
-   -- let _ <- Clingo.test (Except.error 3 : Except UInt32 UInt32)
-   let sym <- Clingo.Symbol.mk_number 1000
+def test_symbol : IO Unit := do
+let sym <- Clingo.Symbol.mk_number 1000
    println! "made a number symbol {sym}"
    println! "the number is {sym.number?}"
    println! "type is {repr sym.type}"
@@ -43,5 +42,14 @@ def main : IO Unit := do
    println! "the name is {sym.name?}"
    println! "args are {sym.args?}"
    println! "type is {repr sym.type}"
-   let _control <- Clingo.Control.mk (args := #["--help"])
-   println! s!"finished! {((UInt64.shiftLeft 1 63) + ((UInt64.shiftLeft 1 63) - 2) : UInt64)} {repr _control}"
+
+def main : IO Unit := do
+   -- let _ <- Clingo.test (Except.error 3 : Except UInt32 UInt32)
+   
+   let Except.ok control <- Clingo.Control.mk (args := #[]) | throw (IO.userError "failed to create control")
+
+   let Except.ok () <- control.load "./test/test.clingo" | throw (IO.userError "failed to load test file")
+
+   let Except.ok () <- control.add "base" #[] "p(b)." | throw (IO.userError "failed to load expression")
+
+   println! s!"finished!"
