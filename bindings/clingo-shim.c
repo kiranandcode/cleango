@@ -2,6 +2,14 @@
 #include <stdio.h>
 #include "clingo.h"
 
+#define REGISTER_LEAN_CLASS(NAME, FINALISER, FOREACH) \
+  static lean_external_class * g_ ## NAME ## _class; \
+  static lean_external_class * get_ ## NAME ## _class() { \
+     if(g_ ## NAME ## _class == NULL) { g_ ## NAME ## _class = lean_register_external_class(&FINALISER,&FOREACH); } \
+     return g_ ## NAME ## _class; \
+  }
+
+
 /* * Utilities
  ============================================================
 */ 
@@ -78,13 +86,14 @@ lean_object * lean_clingo_location_to_location(clingo_location_t *loc) {
   return tuple;
 }
 
-#define REGISTER_LEAN_CLASS(NAME, FINALISER, FOREACH) \
-  static lean_external_class * g_ ## NAME ## _class; \
-  static lean_external_class * get_ ## NAME ## _class() { \
-     if(g_ ## NAME ## _class == NULL) { g_ ## NAME ## _class = lean_register_external_class(&FINALISER,&FOREACH); } \
-     return g_ ## NAME ## _class; \
-  }
-
+lean_object *lean_clingo_solve_result_to_solve_result(clingo_solve_result_bitset_t result) {
+  lean_object *resultObj = lean_alloc_ctor(0, 4, 0);
+  lean_ctor_set(resultObj, 0, lean_box(result & clingo_solve_result_satisfiable));
+  lean_ctor_set(resultObj, 1, lean_box(result & clingo_solve_result_unsatisfiable));
+  lean_ctor_set(resultObj, 2, lean_box(result & clingo_solve_result_exhausted));
+  lean_ctor_set(resultObj, 3, lean_box(result & clingo_solve_result_interrupted));
+  return resultObj;
+}
 
 /* * Clingo Utilities
  ============================================================
@@ -167,6 +176,7 @@ static void lean_clingo_logger_callback_wrapper(clingo_warning_t code, char cons
   return;
 
 }
+
 /* * Signature
  ============================================================
 */ 
@@ -342,7 +352,7 @@ lean_obj_res lean_clingo_symbol_arguments(uint64_t symbol) {
   if (success) {
     lean_object *array = lean_alloc_array(arguments_size, arguments_size);
     lean_object **array_ptr = lean_array_cptr(array);
-    for(int i = 0; i < arguments_size; i++) {
+    for(size_t i = 0; i < arguments_size; i++) {
       array_ptr[i] = lean_box_uint64(arguments[i]);
     }
     return lean_mk_option_some(array);
@@ -408,11 +418,104 @@ uint64_t lean_clingo_symbol_hash(uint64_t a) {
   return hash;
 }
 
-/* * Symbols
- ============================================================ */
-static void clingo_symbols_finaliser(void *_obj) {  }
-REGISTER_LEAN_CLASS(clingo_symbols, clingo_symbols_finaliser, noop_foreach)
 
+/* * Solve Handle
+ ============================================================ */
+static void clingo_solve_handle_finaliser(void *_obj) {  }
+REGISTER_LEAN_CLASS(clingo_solve_handle, clingo_solve_handle_finaliser, noop_foreach)
+
+/* * Statistics
+ ============================================================ */
+static void clingo_statistics_finaliser(void *_obj) {  }
+REGISTER_LEAN_CLASS(clingo_statistics, clingo_statistics_finaliser, noop_foreach)
+
+/* root: @& Statistics -> UInt64 */
+uint64_t lean_clingo_statistics_root(lean_object *obj) {
+  clingo_statistics_t *stats = lean_get_external_data(obj);
+  uint64_t key = 0;
+
+  bool success = clingo_statistics_root(stats, &key);
+  assert(success);
+
+  return key;
+}
+
+/* type: @& Statistics -> UInt64 -> StatisticsType */
+uint8_t lean_clingo_statistics_type(lean_object *obj, uint64_t key) {
+  clingo_statistics_t *stats = lean_get_external_data(obj);
+  clingo_statistics_type_t ty = 0;
+
+  bool success = clingo_statistics_type(stats, key, &ty);
+  assert(success);
+
+  return ty;
+}
+
+/* arraySize: @& Statistics -> UInt64 -> USize */
+size_t lean_clingo_statistics_array_size(lean_object *obj, uint64_t key) {
+  clingo_statistics_t *stats = lean_get_external_data(obj);
+  size_t size = 0;
+
+  bool success = clingo_statistics_array_size(stats, key, &size);
+  assert(success);
+
+  return size;
+}
+
+/* arrayRef: @& Statistics -> (key: UInt64) -> (offset: USize) -> UInt64 */
+uint64_t lean_clingo_statistics_array_ref(lean_object *obj, uint64_t key, size_t offset) {
+  clingo_statistics_t *stats = lean_get_external_data(obj);  
+  uint64_t res = 0;
+
+  bool success = clingo_statistics_array_at(stats, key, offset, &res);
+  assert(success);
+
+  return res;
+}
+
+/* mapSize: @& Statistics -> USize */
+size_t lean_clingo_statistics_map_size(lean_object *obj, uint64_t key) {
+  clingo_statistics_t *stats = lean_get_external_data(obj);  
+  size_t size = 0;
+
+  bool success = clingo_statistics_map_size(stats, key, &size);
+  assert(success);
+
+  return size;
+}
+
+/* mapHasKey?: @& Statistics -> (key: UInt64) -> (name : @& String) -> Bool */
+uint8_t lean_clingo_statistics_map_has_key(lean_object *obj, uint64_t key, lean_object *str) {
+  clingo_statistics_t *stats = lean_get_external_data(obj);  
+  bool has_key = 0;
+
+  bool success = clingo_statistics_map_has_subkey(stats, key, lean_string_cstr(str), &has_key);
+  assert(success);
+
+  return has_key;
+}
+
+/* mapRef: @& Statistics -> (key: UInt64) -> (name : @& String) -> UInt64 */
+uint64_t lean_clingo_statistics_map_ref(lean_object *obj, uint64_t key, lean_object *name) {
+  clingo_statistics_t *stats = lean_get_external_data(obj);  
+  uint64_t res = 0;
+
+  bool success = clingo_statistics_map_at(stats, key, lean_string_cstr(name), &res);
+  assert(success);
+
+  return res;
+}
+
+/* valueGet: @& Statistics -> (key: UInt64) -> Float */
+lean_obj_res lean_clingo_statistics_value_get(lean_object *obj, uint64_t key) {
+  clingo_statistics_t *stats = lean_get_external_data(obj);  
+  double res = 0.0;
+
+  bool success = clingo_statistics_value_get(stats, key, &res);
+  assert(success);
+
+  return lean_box_float(res);  
+}
 
 
 /* * Model
@@ -420,13 +523,191 @@ REGISTER_LEAN_CLASS(clingo_symbols, clingo_symbols_finaliser, noop_foreach)
 static void clingo_model_finaliser(void *_obj) {  }
 REGISTER_LEAN_CLASS(clingo_model, clingo_model_finaliser, noop_foreach)
 
+/* type: @& Model -> ModelType */
+uint8_t lean_clingo_model_type(lean_object *modelObj) {
+  clingo_model_t *model = lean_get_external_data(modelObj);
+  clingo_model_type_t type;
+  bool success = clingo_model_type(model, &type);
+  assert(success);
+  return type;
+}
+
+/* id: @& Model -> UInt64 */
+uint64_t lean_clingo_model_number(lean_object *modelObj) {
+  clingo_model_t *model = lean_get_external_data(modelObj);
+  uint64_t number = 0;
+  bool success = clingo_model_number(model, &number);
+  assert(success);
+  return number;
+}
+
+clingo_show_type_bitset_t lean_clingo_calculate_flags(lean_object *filterFlags) {
+  clingo_show_type_bitset_t show = 0;
+  printf("num objs: %d\n", lean_ctor_num_scalars(filterFlags));
+  if(lean_unbox(lean_ctor_get(filterFlags, 0))) show |= clingo_show_type_csp;
+  if(lean_unbox(lean_ctor_get(filterFlags, 1))) show |= clingo_show_type_shown;
+  if(lean_unbox(lean_ctor_get(filterFlags, 2))) show |= clingo_show_type_atoms;
+  if(lean_unbox(lean_ctor_get(filterFlags, 3))) show |= clingo_show_type_terms;
+  if(lean_unbox(lean_ctor_get(filterFlags, 4))) show |= clingo_show_type_all;
+  if(lean_unbox(lean_ctor_get(filterFlags, 5))) show |= clingo_show_type_complement;
+  return show;
+}
+
+/* size: @& Model -> @& FilterFlags -> USize */
+size_t lean_clingo_model_size(lean_object *modelObj, lean_object *filterFlags) {
+  clingo_model_t *model = lean_get_external_data(modelObj);
+  size_t size = 0;
+  clingo_show_type_bitset_t show = lean_clingo_calculate_flags(filterFlags);
+  bool success = clingo_model_symbols_size(model, show, &size);
+  assert(success);
+  return size;
+}
+
+/* symbols: @& Model -> @& FilterFlags -> Array Symbol */
+lean_obj_res lean_clingo_model_symbols(lean_object *modelObj, lean_object *filterFlags) {
+  clingo_model_t *model = NULL;
+  size_t size = 0;
+  bool success = true;
+  clingo_show_type_bitset_t show = 0;
+  clingo_symbol_t *symbols = NULL;
+
+  model = lean_get_external_data(modelObj);
+  show = lean_clingo_calculate_flags(filterFlags);
+
+  success = clingo_model_symbols_size(model, show, &size);
+  assert(success);
+
+  symbols = malloc(sizeof(*symbols) * size);
+  assert(symbols != NULL);
+  
+  success = clingo_model_symbols(model, show, symbols, size);
+  assert(success);
+
+  lean_object *res = lean_alloc_array(size, size);
+  lean_object **res_ptr = lean_array_cptr(res);
+  for(size_t i = 0; i < size; i ++) {
+    res_ptr[i] = lean_box_uint64(symbols[i]);
+  }
+  free(symbols);
+
+  return res;
+}
+
+/* contains?: @& Model -> Atom -> Bool */
+uint8_t lean_clingo_model_contains(lean_object *modelObj, uint32_t atom) {
+  clingo_model_t *model = lean_get_external_data(modelObj);
+  bool contained = false;
+  bool success = clingo_model_contains(model, atom, &contained);
+  assert(success);
+  return contained;
+}
+
+/* is_true?: @& Model -> Literal -> Bool */
+uint8_t lean_clingo_model_is_true(lean_object *modelObj, int32_t literal) {
+  clingo_model_t *model = lean_get_external_data(modelObj);
+  bool is_true = false;
+  bool success = clingo_model_is_true(model, literal, &is_true);
+  assert(success);
+  return is_true;
+}
+
+/* costs: @& Model -> Array Int */
+lean_obj_res lean_clingo_model_costs(lean_object *modelObj) {
+  clingo_model_t *model = NULL;
+  bool success = true;
+  size_t size = 0;
+  int64_t *costs = NULL;
+
+  model = lean_get_external_data(modelObj);
+  success = clingo_model_cost_size(model, &size);
+  assert(success);
+
+  costs = malloc(sizeof(*costs) * size);
+  assert(costs != NULL);
+  
+  success = clingo_model_cost(model, costs, size);
+  assert(success);
+  
+  lean_object *res = lean_alloc_array(size, size);
+  lean_object **res_ptr = lean_array_cptr(res);
+  for(size_t i = 0; i < size; i ++) {
+    res_ptr[i] = lean_int_to_int(costs[i]);
+  }
+  free(costs);
+
+  return res;
+}
+
+/* optimal?: @& Model -> Bool */
+uint8_t lean_clingo_model_optimality_proven(lean_object *modelObj) {
+  clingo_model_t *model = lean_get_external_data(modelObj);
+  bool is_optimal = false;
+  bool success = clingo_model_optimality_proven(model, &is_optimal);
+  assert(success);
+  return is_optimal;  
+}
 
 
+/* * Solve Event
+ ============================================================ */
+lean_object *lean_clingo_mk_solve_event_model(clingo_model_t *model) {
+  lean_object *evtObj = lean_alloc_ctor(0, 1, 0);
 
+  if(model == NULL) {
+    lean_ctor_set(evtObj, 0, lean_mk_option_none());    
+  } else {
+    lean_object *modelObj = lean_alloc_external(get_clingo_model_class(), model);
+    lean_ctor_set(evtObj, 0, lean_mk_option_some(modelObj));    
+  }
+
+  return evtObj;
+}
+lean_object *lean_clingo_mk_solve_event_stats(clingo_statistics_t **stats) {
+  lean_object *perStepObj = lean_alloc_external(get_clingo_model_class(), stats[0]);
+  lean_object *accumObj = lean_alloc_external(get_clingo_model_class(), stats[1]);
+  lean_object *evtObj = lean_alloc_ctor(1, 2, 0);
+  lean_ctor_set(evtObj, 0, perStepObj);
+  lean_ctor_set(evtObj, 1, accumObj);
+  return evtObj;
+}
+lean_object *lean_clingo_mk_solve_event_finish(clingo_solve_result_bitset_t *result) {
+  lean_object *resultObj = lean_clingo_solve_result_to_solve_result(*result);
+  lean_object *evtObj = lean_alloc_ctor(2, 1, 0);
+  lean_ctor_set(evtObj, 0, resultObj);
+  return resultObj;
+}
+
+
+static bool lean_clingo_solve_event_callback_wrapper(clingo_solve_event_type_t type, void *event, void *data, bool *goon) {
+  lean_object *userCallback = (lean_object *)data;
+  /* lean_object *result = lean_apply_3(userCallback, lean_box(code), lean_mk_string(message), lean_io_mk_world()); */
+  lean_object *eventObj = NULL;
+  switch (type) {
+  case clingo_solve_event_type_model: 
+    eventObj = lean_clingo_mk_solve_event_model((clingo_model_t *)event);
+    break;
+  case clingo_solve_event_type_statistics: 
+    eventObj = lean_clingo_mk_solve_event_stats((clingo_statistics_t **)event);
+    break;
+  case clingo_solve_event_type_finish: 
+    eventObj = lean_clingo_mk_solve_event_finish((clingo_solve_result_bitset_t *)event);
+    break;
+  }
+  assert(eventObj != NULL);
+  lean_object *result = lean_apply_2(userCallback, eventObj, lean_io_mk_world());
+  if(lean_ptr_tag(result) == 1) {
+      lean_io_result_show_error(result);
+  } else {
+    bool should_continue = lean_unbox(lean_io_result_get_value(result));
+    printf("callabck should continue: %d?\n", should_continue);
+    *goon = should_continue;
+  }
+  lean_dec_ref(result);
+  return true;
+}
 /* * Control
  ============================================================
 */ 
-
 static void clingo_control_finaliser(void *obj) { clingo_control_free((clingo_control_t *) obj); }
 REGISTER_LEAN_CLASS(clingo_control, clingo_control_finaliser, noop_foreach)
 
@@ -519,6 +800,60 @@ lean_obj_res lean_clingo_control_add(lean_object *controlObj, lean_object *nameO
 }
 
 
+/* Clingo.Control.statistics : @& Control -> IO (Except Error Statistics) */
+lean_obj_res lean_clingo_control_statistics(lean_object *controlObj) {
+  clingo_control_t *control = lean_get_external_data(controlObj);
+  const clingo_statistics_t *stats = NULL;
+
+  bool success = clingo_control_statistics(control, &stats);
+
+  if(success) {
+    lean_object *result = lean_alloc_external(get_clingo_statistics_class(), (void *)stats);    
+    return lean_io_result_mk_ok(lean_mk_except_ok(result));
+  } else {
+    return lean_io_result_mk_ok(lean_mk_clingo_error());
+  }
+}
+
+
+/* Clingo.Control.interrupt : @& Control -> IO Unit */
+lean_obj_res lean_clingo_control_interrupt(lean_object *controlObj) {
+  clingo_control_t *control = lean_get_external_data(controlObj);
+
+  clingo_control_interrupt(control);
+
+  return lean_io_result_mk_ok(lean_mk_except_ok(lean_box(0)));
+}
+
+
+/* Clingo.Control.solve:
+    @& Control -> SolveMode -> (assumptions : @& Array (@& Literal)) -> SolveEventCallback -> IO (Except Error SolveHandle) */
+lean_obj_res lean_clingo_solve(lean_object *controlObj, uint8_t solve_mode, lean_object *assumptionsObj, lean_object *solveCallbackObj) {
+  clingo_control_t *control = lean_get_external_data(controlObj);
+
+  clingo_solve_handle_t *handle= NULL;
+  lean_array_object *assumptionsArrayObj = lean_to_array(assumptionsObj);
+
+  size_t c_assumptions_size = assumptionsArrayObj->m_size;
+  clingo_literal_t *c_assumptions=malloc(sizeof(*c_assumptions) * c_assumptions_size);
+  assert(c_assumptions != NULL);
+
+  for(size_t i = 0; i < c_assumptions_size; i ++) {
+    c_assumptions[i] = lean_unbox(assumptionsArrayObj->m_data[i]);
+  }
+
+  bool success =
+    clingo_control_solve(control, solve_mode, (const clingo_literal_t *)c_assumptions, c_assumptions_size, &lean_clingo_solve_event_callback_wrapper, solveCallbackObj, &handle);
+
+  free((void *)c_assumptions);
+
+  if(success) {
+    lean_object *result = lean_alloc_external(get_clingo_solve_handle_class(), (void *)handle);
+    return lean_io_result_mk_ok(lean_mk_except_ok(result));
+  } else {
+    return lean_io_result_mk_ok(lean_mk_clingo_error());
+  }
+}
 
 /* lean_obj_res lean_test(lean_object *obj) { */
 /*   printf("calling lean test!\n"); */

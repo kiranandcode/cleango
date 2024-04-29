@@ -43,6 +43,20 @@ let sym <- Clingo.Symbol.mk_number 1000
    println! "args are {sym.args?}"
    println! "type is {repr sym.type}"
 
+def my_callback (_evt : Clingo.SolveEvent) : IO Bool := do
+  match _evt with
+  | Clingo.SolveEvent.ModelFound none => println! "found a model (none)"
+  | Clingo.SolveEvent.ModelFound (some m) =>
+       println! "found a model (some)"
+       let symbols := m.symbols
+       for sym in Array.toList symbols do
+           println! "{sym}"
+  | Clingo.SolveEvent.StatsUpdated _s1 _s2 => do println! "stats updated"
+  | Clingo.SolveEvent.Finished res => do println! "search finished {repr res}"
+
+  return true
+
+
 def main : IO Unit := do
    -- let _ <- Clingo.test (Except.error 3 : Except UInt32 UInt32)
    
@@ -51,5 +65,7 @@ def main : IO Unit := do
    let Except.ok () <- control.load "./test/test.clingo" | throw (IO.userError "failed to load test file")
 
    let Except.ok () <- control.add "base" #[] "p(b)." | throw (IO.userError "failed to load expression")
+
+   let Except.ok _handle <- control.solve Clingo.SolveMode.Neither (#[] : Array Clingo.Literal) my_callback | throw (IO.userError "failed to solve")
 
    println! s!"finished!"

@@ -18,8 +18,8 @@ instance VersionToString : ToString Version where toString v := s!"{v.major}.{v.
 @[extern "lean_clingo_version"]
 opaque version : IO Version
 
-def Literal := UInt32
-deriving Repr
+abbrev Literal := UInt32
+-- deriving Repr
 
 abbrev Atom := UInt32
 abbrev Id := UInt32
@@ -160,19 +160,10 @@ end Iterator
 
 end Symbol
 
-private opaque SymbolsP : NonemptyType
-def Symbols := SymbolsP.type
-
-namespace Symbols
-end Symbols
-
-
-private opaque ModelP : NonemptyType
-def Model := ModelP.type
+opaque Model : Type
 
 inductive ModelType where | Stable | Brave | Cautious
 deriving Repr, Inhabited
-
 
 namespace Model
 
@@ -183,6 +174,7 @@ structure FilterFlags where
    select_all_terms: Bool
    select_all: Bool
    select_complement: Bool
+deriving Repr, Inhabited
 
 @[extern "lean_clingo_model_type"]
 opaque type: @& Model -> ModelType
@@ -194,7 +186,9 @@ opaque id: @& Model -> UInt64
 opaque size: @& Model -> @& FilterFlags -> USize
 
 @[extern "lean_clingo_model_symbols"]
-opaque symbols: @& Model -> @& FilterFlags -> Symbols
+private opaque symbols_inner: @& Model -> @& FilterFlags -> Array Symbol
+
+def symbols (m : @& Model ) (flags : @& FilterFlags := default) : Array Symbol := symbols_inner m flags
 
 @[extern "lean_clingo_model_contains"]
 opaque contains?: @& Model -> Atom -> Bool
@@ -203,17 +197,70 @@ opaque contains?: @& Model -> Atom -> Bool
 opaque is_true?: @& Model -> Literal -> Bool
 
 @[extern "lean_clingo_model_costs"]
-opaque consts: @& Model -> Array UInt64
+opaque costs: @& Model -> Array Int
 
 @[extern "lean_clingo_model_optimality_proven"]
 opaque optimal?: @& Model -> Bool
 
 end Model
 
+opaque Statistics : Type
+
+inductive StatisticsType where | Empty | Value | Array | Map
+deriving Repr, Inhabited
+
+namespace Statistics
+
+@[extern "lean_clingo_statistics_root"]
+opaque root: @& Statistics -> UInt64
+
+@[extern "lean_clingo_statistics_type"]
+opaque type: @& Statistics -> UInt64 -> StatisticsType
+
+@[extern "lean_clingo_statistics_array_size"]
+opaque arraySize: @& Statistics -> UInt64 -> USize
+
+@[extern "lean_clingo_statistics_array_ref"]
+opaque arrayRef: @& Statistics -> (key: UInt64) -> (offset: USize) -> UInt64
+
+@[extern "lean_clingo_statistics_map_size"]
+opaque mapSize: @& Statistics -> UInt64 -> USize
+
+@[extern "lean_clingo_statistics_map_has_key"]
+opaque mapHasKey?: @& Statistics -> (key: UInt64) -> (name : @& String) -> Bool
+
+@[extern "lean_clingo_statistics_map_ref"]
+opaque mapRef: @& Statistics -> (key: UInt64) -> (name : @& String) -> UInt64
+
+@[extern "lean_clingo_statistics_value_get"]
+opaque valueGet: @& Statistics -> (key: UInt64) -> Float
+
+
+
+end Statistics
+
+structure SolveResult where
+  satisfiable : Bool
+  unsatisfiable : Bool
+  exhausted : Bool
+  interrupted : Bool
+deriving Repr
+
 inductive SolveMode where | Neither | Async | Yield | AsyncYield
 
-inductive SolveEvent where | ModelFound (m : Model)  | StatsUpdated (perStep : Stats) (accum : Stats) | Finished (res: SolveResult)
+inductive SolveEvent where
+| ModelFound (m : Option Model)
+| StatsUpdated (perStep : Statistics) (accum : Statistics)
+| Finished (res: SolveResult)
+
 def SolveEventCallback := SolveEvent -> IO Bool
+
+
+opaque SolveHandle : Type
+
+namespace SolveHandle
+end SolveHandle
+
 
 private opaque ControlP : NonemptyType
 def Control := ControlP.type
@@ -241,7 +288,15 @@ opaque add : @& Control -> (name : @& String) -> (params: @& Array String) -> (p
 -- @[extern "lean_clingo_control_ground"]
 -- opaque ground : @& Control -> (name : @& String) -> (parts: @& Array (@& Part)) -> (callback: @& GroundCallback) -> IO (Except Error Unit)
 
-opaque solve: @& Control -> SolveMode -> (assumptions : @& Array (@& Literal)) -> SolveEventCallback -> IO (Except Error SolveHandle)
+@[extern "lean_clingo_solve"]
+opaque solve: @& Control -> SolveMode -> @& Array Literal -> SolveEventCallback -> IO (Except Error SolveHandle)
+
+
+@[extern "lean_clingo_control_statistics"]
+opaque statistics : @& Control -> IO (Except Error Statistics)
+
+@[extern "lean_clingo_control_interrupt"]
+opaque interrupt : @& Control -> IO Unit
 
 instance : Repr Control where
    reprPrec _ _ := s!"(Clingo.Control.mk)"
