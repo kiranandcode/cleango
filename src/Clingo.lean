@@ -166,7 +166,7 @@ end Iterator
 
 end Symbol
 
-def SymbolCallback := Array Symbol -> IO Bool
+def SymbolCallback := Array Symbol -> IO Unit
 def GroundCallback := Location -> String -> Array Symbol -> SymbolCallback -> IO Bool
 
 opaque Model : Type

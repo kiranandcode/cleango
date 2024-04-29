@@ -788,7 +788,7 @@ static void clingo_grounding_callback_data_finaliser(void *_obj) {  }
 REGISTER_LEAN_CLASS(clingo_grounding_callback_data, clingo_grounding_callback_data_finaliser, noop_foreach)
 
 
-lean_obj_res lean_clingo_symbol_callback_wrapper(lean_object *symbolCallbackObj, lean_object *symbolCallbackDataObj, lean_object *symbolsArrayObj) {
+lean_obj_res lean_clingo_symbol_callback_wrapper(lean_object *symbolCallbackObj, lean_object *symbolCallbackDataObj, lean_object *symbolsArrayObj, lean_object *_world) {
   clingo_symbol_callback_t symbolCallback = lean_get_external_data(symbolCallbackObj);
   void *symbolCallbackData = lean_get_external_data(symbolCallbackDataObj);
 
@@ -819,7 +819,7 @@ bool lean_clingo_ground_event_callback_wrapper(clingo_location_t const *location
 
     lean_object *userCallbackObj = data;
 
-    lean_object *symbolCallbackFuncObj = lean_alloc_closure(&lean_clingo_symbol_callback_wrapper, 3, 2);
+    lean_object *symbolCallbackFuncObj = lean_alloc_closure(&lean_clingo_symbol_callback_wrapper, 4, 2);
     lean_object *symbolCallbackObj = lean_alloc_external(get_clingo_grounding_callback_class(), (void *) symbol_callback);
     lean_object *symbolCallbackDataObj = lean_alloc_external(get_clingo_grounding_callback_data_class(), (void *) symbol_callback_data);
     
@@ -830,10 +830,12 @@ bool lean_clingo_ground_event_callback_wrapper(clingo_location_t const *location
     if(lean_ptr_tag(result) == 1) {
         lean_io_result_show_error(result);
         lean_dec_ref(result);
+        clingo_set_error(clingo_error_runtime, "internal Lean error");
         return false;
     } else {
         bool success = lean_unbox(lean_io_result_get_value(result));
         lean_dec_ref(result);
+        if(!success) clingo_set_error(clingo_error_runtime, "user error");
         return success;
     }
 }
