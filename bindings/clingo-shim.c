@@ -241,52 +241,53 @@ uint64_t lean_clingo_signature_hash(uint64_t a) {
  ============================================================
 */ 
 
-/* Clingo.Symbol.mk_number : Int -> IO Symbol  */
-lean_obj_res lean_clingo_symbol_mk_number(lean_object *number) {
+/* Clingo.Symbol.mk_number : Int -> Symbol  */
+uint64_t lean_clingo_symbol_mk_number(lean_object *number) {
   clingo_symbol_t symbol;
   clingo_symbol_create_number(lean_scalar_to_int(number), &symbol);
-  return lean_io_result_mk_ok(lean_box_uint64(symbol));
+  return ((symbol));
 }
 
-/* Clingo.Symbol.mk_supremum : IO Symbol  */
-lean_obj_res lean_clingo_symbol_mk_supremum() {
+/* Clingo.Symbol.mk_supremum : Unit -> Symbol  */
+uint64_t lean_clingo_symbol_mk_supremum(lean_object *_tt) {
   clingo_symbol_t symbol;
   clingo_symbol_create_supremum(&symbol);
-  return lean_io_result_mk_ok(lean_box_uint64(symbol));
+  return ((symbol));
 }
 
-/* Clingo.Symbol.mk_infimum : IO Symbol  */
-lean_obj_res lean_clingo_symbol_mk_infimum() {
+/* Clingo.Symbol.mk_infimum : Unit -> Symbol  */
+uint64_t lean_clingo_symbol_mk_infimum(lean_object *_tt) {
   clingo_symbol_t symbol;
   clingo_symbol_create_infimum(&symbol);
-  return lean_io_result_mk_ok(lean_box_uint64(symbol));
+  return ((symbol));
 }
 
-/* Clingo.Symbol.mk_string : @& String -> IO Symbol  */
-lean_obj_res lean_clingo_symbol_mk_string(lean_object *str) {
+/* Clingo.Symbol.mk_string : @& String -> Symbol  */
+uint64_t lean_clingo_symbol_mk_string(lean_object *str) {
   clingo_symbol_t symbol;
   clingo_symbol_create_string(lean_string_cstr(str), &symbol);
-  return lean_io_result_mk_ok(lean_box_uint64(symbol));
+  return (symbol);
 }
 
-/* Clingo.Symbol.mk_id : @& String -> Bool -> IO Symbol  */
-lean_obj_res lean_clingo_symbol_mk_id(lean_object *str, uint8_t is_positive) {
+/* Clingo.Symbol.mk_id : @& String -> Bool -> Symbol  */
+uint64_t lean_clingo_symbol_mk_id(lean_object *str, uint8_t is_positive) {
   clingo_symbol_t symbol;
   clingo_symbol_create_id(lean_string_cstr(str), is_positive, &symbol);
-  return lean_io_result_mk_ok(lean_box_uint64(symbol));
+  return (symbol);
 }
 
-/* Clingo.Symbol.mk_fun : @& String -> Array Symbol -> Bool -> IO Symbol  */
-lean_obj_res lean_clingo_symbol_mk_fun(lean_object *str, lean_object *args, uint8_t is_positive) {
+/* Clingo.Symbol.mk_fun : @& String -> Array Symbol -> Bool -> Symbol  */
+uint64_t lean_clingo_symbol_mk_fun(lean_object *str, lean_object *args, uint8_t is_positive) {
   clingo_symbol_t symbol;
 
   lean_array_object *argsObj = lean_to_array(args);
   size_t c_args_size = argsObj->m_size;
   clingo_symbol_t *c_args = malloc(sizeof(*c_args) * c_args_size);
+  if(c_args_size > 0) assert(c_args != NULL);
   for(size_t i = 0; i < c_args_size; i++) { c_args[i] = lean_unbox_uint64(argsObj->m_data[i]); };
   clingo_symbol_create_function(lean_string_cstr(str), c_args, c_args_size, is_positive, &symbol);
   free(c_args);
-  return lean_io_result_mk_ok(lean_box_uint64(symbol));
+  return (symbol);
 }
 
 /* Clingo.Symbol.number? : Symbol -> Option Int  */
@@ -300,7 +301,7 @@ lean_obj_res lean_clingo_symbol_number(uint64_t symbol) {
   }
 }
 
-/* Clingo.Symbol.name? : Symbol -> Option Int  */
+/* Clingo.Symbol.name? : Symbol -> Option String  */
 lean_obj_res lean_clingo_symbol_name(uint64_t symbol) {
   const char *name;
   bool success = clingo_symbol_name(symbol, &name);
@@ -380,6 +381,67 @@ static inline int lean_symbol_to_clingo_symbol(uint8_t symbol) {
   case 3: return clingo_symbol_type_function;
   case 4: return clingo_symbol_type_supremum;
   }
+}
+
+/* Clingo.Symbol.repr : (s1 : Symbol) -> Repr */
+lean_object *lean_clingo_repr(uint64_t symbol) {
+  clingo_symbol_type_t ty; 
+
+  lean_object *result = NULL;
+  int number;
+  const char *name;
+  bool success;
+
+  lean_object *array = NULL; 
+  lean_object **array_ptr = NULL;
+
+  const clingo_symbol_t *arguments = NULL;
+  size_t arguments_size = 0;
+
+  bool positive;
+ 
+  ty = clingo_symbol_type(symbol);
+  switch (ty) {
+  case clingo_symbol_type_infimum:
+    result = lean_alloc_ctor(0, 0, 0);
+    break;
+  case clingo_symbol_type_number:
+    success = clingo_symbol_number(symbol, &number);
+    assert(success);
+    result = lean_alloc_ctor(1, 1, 0);
+    lean_ctor_set(result, 0, lean_int_to_int(number));
+    break;
+  case clingo_symbol_type_string:
+    success = clingo_symbol_string(symbol, &name);
+    assert(success);
+    result = lean_alloc_ctor(2, 1, 0);
+    lean_ctor_set(result, 0, lean_mk_string(name));
+    break;
+  case clingo_symbol_type_function:
+    result = lean_alloc_ctor(3, 3, 0);
+
+    success = clingo_symbol_name(symbol, &name);
+    assert(success);
+    lean_ctor_set(result, 0, lean_mk_string(name));
+
+    success = clingo_symbol_arguments(symbol, &arguments, &arguments_size);
+    assert(success);
+    array = lean_alloc_array(arguments_size, arguments_size);
+    array_ptr = lean_array_cptr(array);
+    for(size_t i = 0; i < arguments_size; i++) { array_ptr[i] = lean_clingo_repr(arguments[i]); }
+    lean_ctor_set(result, 1, array);
+
+    success = clingo_symbol_is_positive(symbol, &positive);
+    assert(success);
+    lean_ctor_set(result, 2, lean_box(positive));
+
+    break;
+  case clingo_symbol_type_supremum:
+    result = lean_alloc_ctor(4, 0, 0);
+    break;
+  }
+  assert(result != NULL);
+  return result;
 }
 
 /* Clingo.Symbol.type : Symbol -> SymbolType  */

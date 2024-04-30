@@ -14,30 +14,30 @@ def test_signature : IO Unit := do
    {test.hash}"
 
 def test_symbol : IO Unit := do
-let sym <- Clingo.Symbol.mk_number 1000
+   let sym := Clingo.Symbol.mk_number 1000
    println! "made a number symbol {sym}"
    println! "the number is {sym.number?}"
    println! "type is {repr sym.type}"
 
-   let sym <- Clingo.Symbol.mk_infimum
+   let sym := Clingo.Symbol.mk_infimum
    println! "made a infimum symbol {sym}"
    println! "type is {repr sym.type}"
 
-   let sym <- Clingo.Symbol.mk_supremum
+   let sym := Clingo.Symbol.mk_supremum
    println! "made a supremum symbol {sym}"
    println! "type is {repr sym.type}"
 
-   let sym <- Clingo.Symbol.mk_string "hello"
+   let sym := Clingo.Symbol.mk_string "hello"
    println! "made a string symbol {sym}"
    println! "the string is {sym.string?}"
    println! "type is {repr sym.type}"
 
-   let sym <- Clingo.Symbol.mk_id "hello" true
+   let sym := Clingo.Symbol.mk_id "a" true
    println! "made a id symbol {sym}"
    println! "type is {repr sym.type}"
    println! "hash is {sym.hash}"
 
-   let sym <- Clingo.Symbol.mk_fun "hello" #[sym] true
+   let sym := Clingo.Symbol.mk_fun "hello" #[sym] true
    println! "made a fun symbol {sym}"
    println! "the name is {sym.name?}"
    println! "args are {sym.args?}"
@@ -56,7 +56,7 @@ def test_control : IO Unit := do
             let symbols := m.symbols
             println! "retrieved {symbols.size} symbols"
             for sym in Array.toList symbols do
-                println! "{sym}"
+                println! "{repr sym.repr} {sym}"
             println! "retrieved {m.costs.size} costs"
             for cost in m.costs do
                 println! "{cost}"
@@ -80,4 +80,5 @@ def main : IO Unit := do
    test_version
    test_signature
    test_symbol
+   test_control
    println! s!"finished!"
