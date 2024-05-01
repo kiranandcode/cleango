@@ -9,7 +9,6 @@ package Clingo {
 
 
 lean_lib Clingo {
-   srcDir := "src"
 }
 
 def cDir := "bindings"
@@ -30,8 +29,12 @@ target «clingo-shim» pkg : FilePath := do
    buildStaticLib (pkg.buildDir / "lib" / name) #[ffiO]
 
 @[default_target]
-lean_exe tests {
-  root := `test.Tests
+lean_exe test_ffi {
+  root := `test.TestFFI
 }
    
+@[default_target]
+lean_exe test_lang {
+  root := `test.TestLang
+}
     
