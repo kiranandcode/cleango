@@ -744,16 +744,4 @@ def withProgramBuilder (ctrl : Control) (f : ProgramBuilder -> IO A) : IO A := d
 
 end Control
 
-inductive Enum where | A | B | C | D
-
-inductive Test where
-| a (t: Enum) ( x : Symbol)
-| b (t: Enum)
-
-
-@[extern "lean_clingo_test"]
-opaque test_inner : @& Test -> IO Unit
-
-def test := test_inner (Test.a .A (by unfold Symbol; exact 200))
-
 end Clingo

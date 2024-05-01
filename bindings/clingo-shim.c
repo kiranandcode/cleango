@@ -576,7 +576,6 @@ void lean_clingo_term_to_term(lean_object *obj, clingo_ast_term_t *result) {
   result->type = lean_ptr_tag(data);
 
   clingo_ast_term_t *arguments = NULL;
-  size_t arguments_size = 0;
   lean_object **argumentsArrayObj = NULL;
   
   switch(lean_ptr_tag(data)) {
@@ -587,38 +586,38 @@ void lean_clingo_term_to_term(lean_object *obj, clingo_ast_term_t *result) {
      result->variable = lean_string_cstr(lean_ctor_get(data, 0));
     break;
   case clingo_ast_term_type_unary_operation:
-    result->unary_operation = malloc(sizeof(*result->unary_operation));
+    result->unary_operation = malloc(sizeof(*(result->unary_operation)));
     ((clingo_ast_unary_operation_t *)result->unary_operation)->unary_operator = *(lean_ctor_scalar_cptr(data));
     lean_clingo_term_to_term(lean_ctor_get(data, 0), (clingo_ast_term_t *)&result->unary_operation->argument);
     break;
   case clingo_ast_term_type_binary_operation:
-    result->binary_operation = malloc(sizeof(*result->binary_operation));
+    result->binary_operation = malloc(sizeof(*(result->binary_operation)));
     ((clingo_ast_binary_operation_t *)result->binary_operation)->binary_operator = *(lean_ctor_scalar_cptr(data));
     lean_clingo_term_to_term(lean_ctor_get(data, 0), (clingo_ast_term_t *)&result->binary_operation->left);
     lean_clingo_term_to_term(lean_ctor_get(data, 1), (clingo_ast_term_t *)&result->binary_operation->right);
     break;
   case clingo_ast_term_type_interval:
-    result->interval = malloc(sizeof(*result->interval));
+    result->interval = malloc(sizeof(*(result->interval)));
     lean_clingo_term_to_term(lean_ctor_get(data, 0), (clingo_ast_term_t *)&result->interval->left);
     lean_clingo_term_to_term(lean_ctor_get(data, 1), (clingo_ast_term_t *)&result->interval->right);
     break;
   case clingo_ast_term_type_function:
-    result->function = malloc(sizeof(*result->function));
+    result->function = malloc(sizeof(*(result->function)));
     ((clingo_ast_function_t *)result->function)->name = lean_string_cstr(lean_ctor_get(data, 0));
 
     ((clingo_ast_function_t *)result->function)->size = lean_array_size(lean_ctor_get(data,1));
-    ((clingo_ast_function_t *)result->function)->arguments = malloc(sizeof(*result->function->arguments) * arguments_size);
+    ((clingo_ast_function_t *)result->function)->arguments = malloc(sizeof(*(result->function->arguments)) * ((clingo_ast_function_t *)result->function)->size);
 
     argumentsArrayObj = lean_array_cptr(lean_ctor_get(data,1));
     for(size_t i = 0; i<result->function->size;i++){ lean_clingo_term_to_term(argumentsArrayObj[i], (clingo_ast_term_t *) &result->function->arguments[i]); }
     break;
   case clingo_ast_term_type_external_function:
-    result->external_function = malloc(sizeof(*result->external_function));
+    result->external_function = malloc(sizeof(*(result->external_function)));
 
     ((clingo_ast_function_t *)result->external_function)->name = lean_string_cstr(lean_ctor_get(data, 0));
 
     ((clingo_ast_function_t *)result->external_function)->size = lean_array_size(lean_ctor_get(data,1));
-    ((clingo_ast_function_t *)result->external_function)->arguments = malloc(sizeof(*result->external_function->arguments) * arguments_size);
+    ((clingo_ast_function_t *)result->external_function)->arguments = malloc(sizeof(*(result->external_function->arguments)) * ((clingo_ast_function_t *)result->external_function)->size);
 
     argumentsArrayObj = lean_array_cptr(lean_ctor_get(data,1));
     for(size_t i = 0; i<result->external_function->size;i++){ lean_clingo_term_to_term(argumentsArrayObj[i], (clingo_ast_term_t *)&result->external_function->arguments[i]); }
@@ -628,7 +627,7 @@ void lean_clingo_term_to_term(lean_object *obj, clingo_ast_term_t *result) {
     result->pool = malloc(sizeof(*result->pool));
 
     ((clingo_ast_pool_t *)result->pool)->size = lean_array_size(lean_ctor_get(data, 0));
-    ((clingo_ast_pool_t *)result->pool)->arguments = malloc(sizeof(*result->pool->arguments) * result->pool->size);
+    ((clingo_ast_pool_t *)result->pool)->arguments = malloc(sizeof(*(result->pool->arguments)) * result->pool->size);
 
     argumentsArrayObj = lean_array_cptr(lean_ctor_get(data,0));
     for(size_t i = 0; i<result->pool->size;i++){ lean_clingo_term_to_term(argumentsArrayObj[i], (clingo_ast_term_t *)&result->pool->arguments[i]); }
@@ -2078,17 +2077,4 @@ lean_obj_res lean_clingo_control_program_builder(lean_object *controlObj) {
   }
 }
 
-
-lean_obj_res lean_clingo_test(lean_object *obj) {
-   printf("lean no fields: %d\n", lean_ctor_num_objs(obj));
-   uint8_t *scalars = lean_ctor_scalar_cptr(obj);
-   printf("x is %d\n", *(((uint64_t *)scalars)));
-  return lean_io_result_mk_ok(lean_box(0));
-}
-
-/* lean_obj_res lean_test(lean_object *obj) { */
-/*   printf("calling lean test!\n"); */
-/*   lean_clingo_logger_callback_wrapper(clingo_warning_runtime_error, "hello", obj); */
-/*   return lean_io_result_mk_ok(lean_box(0)); */
-/* } */
 

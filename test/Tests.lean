@@ -144,13 +144,10 @@ def test_program_builder : IO Unit := open Clingo.Ast in do
    let Except.ok handle <- control.solve Clingo.SolveMode.Neither (#[] : Array Clingo.Literal) my_callback | throw (IO.userError "failed to solve")
    let _ <- handle.wait (-1.0)
 
-   
-
-
 def main : IO Unit := do
-   -- test_version
-   -- test_signature
-   -- test_symbol
-   -- test_control
+   test_version
+   test_signature
+   test_symbol
+   test_control
    test_program_builder
    println! s!"finished!"
