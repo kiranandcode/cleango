@@ -190,17 +190,17 @@ deriving Repr, Inhabited
 @[extern "lean_clingo_repr"]
 opaque repr (s1 : Symbol) : Repr
 
+@[extern "lean_clingo_mk"]
+opaque mk (s1 : @& Repr) : Symbol
+
+
 instance : SymbolCast Repr where symCast := repr
 
 namespace Repr
 
-  partial def toSymbol : Repr -> Symbol
-  | Infimum => mk_infimum
-  | Number n => mk_number n
-  | String s => mk_string s
-  | Function f #[] is_positive => mk_id f is_positive
-  | Function f args is_positive => mk_fun f (args.map fun v => v.toSymbol) is_positive
-  | Supremum => mk_supremum
+  def toSymbol : Repr -> Symbol := fun r => Symbol.mk r
+
+  def Variable v := Function v #[] true
 
 end Repr 
 
@@ -418,38 +418,38 @@ opaque Backend : Type
 
 namespace Backend
 
-@[extern "lean_clingo_backend_begin"]
-opaque begin_modify: @& Backend -> IO Unit
+-- @[extern "lean_clingo_backend_begin"]
+-- opaque begin_modify: @& Backend -> IO Unit
 
-@[extern "lean_clingo_backend_end"]
-opaque end_modify: @& Backend -> IO Unit
+-- @[extern "lean_clingo_backend_end"]
+-- opaque end_modify: @& Backend -> IO Unit
 
-@[extern "lean_clingo_backend_rule"]
-opaque add_rule: @& Backend -> Bool -> Array Atom -> Array Literal -> IO Unit
+-- @[extern "lean_clingo_backend_rule"]
+-- opaque add_rule: @& Backend -> Bool -> Array Atom -> Array Literal -> IO Unit
 
-@[extern "lean_clingo_backend_weighted_rule"]
-opaque add_weighted_rule: @& Backend -> Bool -> Array Atom -> (weight: Int) -> (weighted_literals: Array (Literal × Int)) -> IO Unit
+-- @[extern "lean_clingo_backend_weighted_rule"]
+-- opaque add_weighted_rule: @& Backend -> Bool -> Array Atom -> (weight: Int) -> (weighted_literals: Array (Literal × Int)) -> IO Unit
 
-@[extern "lean_clingo_backend_minimize_constraint"]
-opaque add_minimize_constraint: @& Backend -> (priority: Int) -> (weighted_literals: Array (Literal × Int)) -> IO Unit
+-- @[extern "lean_clingo_backend_minimize_constraint"]
+-- opaque add_minimize_constraint: @& Backend -> (priority: Int) -> (weighted_literals: Array (Literal × Int)) -> IO Unit
 
-@[extern "lean_clingo_backend_project"]
-opaque add_projection_directive: @& Backend -> Array Atom -> IO Unit
+-- @[extern "lean_clingo_backend_project"]
+-- opaque add_projection_directive: @& Backend -> Array Atom -> IO Unit
 
-@[extern "lean_clingo_backend_external"]
-opaque add_external: @& Backend -> Atom -> ExternalType -> IO Unit
+-- @[extern "lean_clingo_backend_external"]
+-- opaque add_external: @& Backend -> Atom -> ExternalType -> IO Unit
 
-@[extern "lean_clingo_backend_assume"]
-opaque add_assumptions: @& Backend -> Array Literal -> IO Unit
+-- @[extern "lean_clingo_backend_assume"]
+-- opaque add_assumptions: @& Backend -> Array Literal -> IO Unit
 
-@[extern "lean_clingo_backend_add_atom"]
-opaque add_atom: @& Backend -> Option Symbol -> IO Atom
+-- @[extern "lean_clingo_backend_add_atom"]
+-- opaque add_atom: @& Backend -> Option Symbol -> IO Atom
 
 end Backend
 
 namespace Ast
 inductive Sign where | None | Negation | DoubleNegation
-namespace Comparison inductive Operator where | GT | LT | LEQ | GEQ | NEQ | Eq end Comparison
+namespace Comparison inductive Operator where | GT | LT | LEQ | GEQ | NEQ | EQ end Comparison
 namespace UnaryOperator inductive Operator where | Minus | Negation | Absolute end UnaryOperator
 namespace BinaryOperator inductive Operator where | XOR | OR | AND | PLUS | MINUS | MULTIPLICATION | DIVISION | MODULO | POWER end BinaryOperator
 
@@ -486,7 +486,7 @@ structure CSPSumTerm where
   terms: Array CSPProductTerm
 
 structure CSPGuard where
-  cmoparison: Comparison
+  comparison: Comparison.Operator
   term: CSPSumTerm
 
 structure CSPLiteral where
@@ -527,17 +527,17 @@ structure Aggregrate.Head.Element where
 
 structure Aggregate.Body.Element where
   tuple: Array Term
-  codnition: Array Literal
-
-structure Aggregate.Body where
-   function: Aggregrate.Function
-   elements: Array Aggregate.Body.Element
-   left: AggregateGuard
-   right: AggregateGuard
+  condition: Array Literal
 
 structure Aggregate.Head where
    function: Aggregrate.Function
    elements: Array Aggregrate.Head.Element
+   left: AggregateGuard
+   right: AggregateGuard
+
+structure Aggregate.Body where
+   function: Aggregrate.Function
+   elements: Array Aggregate.Body.Element
    left: AggregateGuard
    right: AggregateGuard
 
@@ -583,7 +583,7 @@ inductive OperatorType where | Unary | BinaryLeft | BinaryRight
 structure OperatorDefinition where
   location : Location
   name: String
-  priority: Nat
+  priority: UInt64
   type: OperatorType
 
 structure TermDefinition where
@@ -601,7 +601,8 @@ structure AtomDefinition where
   location: Location
   type: AtomDefinition.Type
   name: String
-  arity: Nat
+  arity: UInt64
+  elements: String
   guard: GuardDefinition
 
 end Theory
@@ -628,7 +629,7 @@ structure HeadLiteral where
   data : HeadLiteral.Data
 
 inductive BodyLiteral.Data where
-| Literal (ltieral: Literal)
+| Literal (literal: Literal)
 | Conditional (conditional : ConditionalLiteral)
 | Aggregate (aggregate : Aggregate)
 | BodyAggregate (bodyAggregate : Aggregate.Body)
@@ -653,7 +654,7 @@ structure Id where
 
 end Ast
 
-inductive Ast.Statement where
+inductive Ast.Statement.Data where
 | Rule (head: Ast.HeadLiteral) (body : Array Ast.BodyLiteral)          --   clingo_ast_statement_type_rule
 | Const (definition : Ast.Definition)                                  --   clingo_ast_statement_type_const
 | ShowSignature (signature : Signature) (csp: Bool)                --   clingo_ast_statement_type_show_signature
@@ -666,8 +667,11 @@ inductive Ast.Statement where
 | Heuristic (atom : Ast.Term) (body : Array Ast.BodyLiteral) (bias priority modifier: Ast.Term) --   clingo_ast_statement_type_heuristic             
 | ProjectAtom (atom : Ast.Term) (body : Array Ast.BodyLiteral) --   clingo_ast_statement_type_project_atom          
 | ProjectAtomSignature (signature : Signature) --   clingo_ast_statement_type_project_atom_signature
-| TheoryDefinition (nmae : String) (terms : Array Ast.Theory.TermDefinition) (atoms : Array Ast.Theory.AtomDefinition) --   clingo_ast_statement_type_theory_definition     
+| TheoryDefinition (name : String) (terms : Array Ast.Theory.TermDefinition) (atoms : Array Ast.Theory.AtomDefinition) --   clingo_ast_statement_type_theory_definition     
 | Defined (signature : Signature)  --   clingo_ast_statement_type_defined               
+structure Ast.Statement where
+   location : Location
+   data: Ast.Statement.Data
 
 namespace Ast
 
@@ -678,16 +682,15 @@ opaque ProgramBuilder : Type
 namespace ProgramBuilder
 
 @[extern "lean_clingo_program_builder_begin"]
-opaque begin_modify: @& ProgramBuilder -> IO Unit
+private opaque begin_modify: @& ProgramBuilder -> IO Unit
 
 
 @[extern "lean_clingo_program_builder_end"]
-opaque end_modify: @& ProgramBuilder -> IO Unit
+private opaque end_modify: @& ProgramBuilder -> IO Unit
 
 
-@[extern "lean_clingo_program_builder_add_statement"]
-opaque add_statement: @& ProgramBuilder -> Ast.Statement -> IO Unit
-
+@[extern "lean_clingo_program_builder_add"]
+opaque addStatement: @& ProgramBuilder -> @& Ast.Statement -> IO Unit
 
 end ProgramBuilder
 
@@ -729,9 +732,28 @@ opaque interrupt : @& Control -> IO Unit
 instance : Repr Control where
    reprPrec _ _ := s!"(Clingo.Control.mk)"
 
+@[extern "lean_clingo_control_program_builder"]
+private opaque programBuilder: @& Control -> IO ProgramBuilder
+
+def withProgramBuilder (ctrl : Control) (f : ProgramBuilder -> IO A) : IO A := do
+    let pb <- ctrl.programBuilder
+    pb.begin_modify
+    let res <- f pb
+    pb.end_modify
+    return res
+
 end Control
 
+inductive Enum where | A | B | C | D
+
+inductive Test where
+| a (t: Enum) ( x : Symbol)
+| b (t: Enum)
 
 
+@[extern "lean_clingo_test"]
+opaque test_inner : @& Test -> IO Unit
+
+def test := test_inner (Test.a .A (by unfold Symbol; exact 200))
 
 end Clingo

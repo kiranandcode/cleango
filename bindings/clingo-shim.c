@@ -9,6 +9,36 @@
      return g_ ## NAME ## _class; \
   }
 
+#define CLINGO_CONV_ARRAY_SIZED(TY, RESULT, DEST, OBJ, SIZE) do {       \
+    RESULT->SIZE = lean_array_size(OBJ);                                \
+    RESULT->DEST = malloc(sizeof(*RESULT->DEST) * RESULT->SIZE);        \
+    lean_object **arrayObj = lean_array_cptr(OBJ);                      \
+    for(size_t i = 0; i<RESULT->SIZE; i++) { lean_clingo_## TY ##_to_ ## TY (arrayObj[i], (clingo_ast_ ## TY ## _t *)&RESULT->DEST[i]); } \
+  } while(0)
+
+#define CLINGO_FREE_ARRAY_SIZED(TY, RESULT, DEST, SIZE) do {            \
+    for(size_t i = 0; i<RESULT->SIZE; i++) {                            \
+      lean_clingo_free_ ## TY ((clingo_ast_ ## TY ## _t *)&RESULT->DEST[i]); \
+    }                                                                   \
+    free((void *)RESULT->DEST);                                         \
+  } while(0)
+
+
+#define CLINGO_CONV_ARRAY(TY, RESULT, DEST, OBJ) CLINGO_CONV_ARRAY_SIZED(TY, RESULT, DEST, OBJ, size)
+
+#define CLINGO_FREE_ARRAY(TY, RESULT, DEST) CLINGO_FREE_ARRAY_SIZED(TY, RESULT, DEST, size)
+
+#define CLINGO_CONV_OBJ(TY, RESULT, DEST, OBJ) do { \
+    RESULT->DEST = malloc(sizeof(*RESULT->DEST));   \
+    lean_clingo_ ## TY ## _to_ ## TY(OBJ, (clingo_ast_## TY ##_t *)RESULT->DEST); \
+  } while(0)
+
+#define CLINGO_FREE_OBJ(TY, RESULT, DEST) do {                          \
+  lean_clingo_free_ ## TY((clingo_ast_ ## TY ## _t *)RESULT->DEST);     \
+  free((void *)RESULT->DEST);                                           \
+  } while(0)
+
+
 
 /* * Utilities
  ============================================================
@@ -86,6 +116,19 @@ lean_object * lean_clingo_location_to_location(const clingo_location_t *loc) {
   return tuple;
 }
 
+clingo_location_t clingo_lean_location_to_location(lean_object *obj) {
+   clingo_location_t result;
+   result.begin_file = lean_string_cstr(lean_ctor_get(obj, 0));
+   result.end_file = lean_string_cstr(lean_ctor_get(obj, 1));
+   result.begin_line = lean_unbox(lean_ctor_get(obj, 2));
+   result.end_line = lean_unbox(lean_ctor_get(obj, 3));
+   result.begin_column = lean_unbox(lean_ctor_get(obj, 4));
+   result.end_column = lean_unbox(lean_ctor_get(obj, 5));
+
+  return result;
+}
+
+
 lean_object *lean_clingo_solve_result_to_solve_result(clingo_solve_result_bitset_t result) {
   lean_object *resultObj = lean_alloc_ctor(0, 0, 4);
   uint8_t *scalarPtr =  lean_ctor_scalar_cptr(resultObj);
@@ -95,6 +138,12 @@ lean_object *lean_clingo_solve_result_to_solve_result(clingo_solve_result_bitset
   scalarPtr[3] = (result & clingo_solve_result_interrupted);
   return resultObj;
 }
+
+typedef const char * clingo_ast_string_t;
+
+static inline void lean_clingo_string_to_string(lean_object *obj, clingo_ast_string_t *result) { *result = lean_string_cstr(obj);}
+
+static inline void lean_clingo_free_string(clingo_ast_string_t *result) { }
 
 /* * Clingo Utilities
  ============================================================
@@ -418,7 +467,7 @@ lean_object *lean_clingo_repr(uint64_t symbol) {
     lean_ctor_set(result, 0, lean_mk_string(name));
     break;
   case clingo_symbol_type_function:
-    result = lean_alloc_ctor(3, 3, 0);
+    result = lean_alloc_ctor(3, 2, 1);
 
     success = clingo_symbol_name(symbol, &name);
     assert(success);
@@ -433,7 +482,7 @@ lean_object *lean_clingo_repr(uint64_t symbol) {
 
     success = clingo_symbol_is_positive(symbol, &positive);
     assert(success);
-    lean_ctor_set(result, 2, lean_box(positive));
+    *lean_ctor_scalar_cptr(result) = positive;
 
     break;
   case clingo_symbol_type_supremum:
@@ -443,6 +492,42 @@ lean_object *lean_clingo_repr(uint64_t symbol) {
   assert(result != NULL);
   return result;
 }
+
+/* Clingo.Symbol.mk : (s1 : Repr) -> Symbol */
+uint64_t lean_clingo_mk(lean_object *obj) {
+  uint64_t symbol;
+  lean_object **arrayObj;
+  size_t c_args_size;
+  clingo_symbol_t *c_args = NULL;
+
+  switch (lean_ptr_tag(obj)) {
+  case 0:
+    clingo_symbol_create_infimum(&symbol);
+    return symbol;
+  case 1:
+    return lean_clingo_symbol_mk_number((lean_ctor_get(obj, 0)));
+  case 2:
+    return lean_clingo_symbol_mk_string(lean_ctor_get(obj, 0));
+  case 3:
+    c_args_size = lean_array_size(lean_ctor_get(obj,1));
+    c_args = malloc(sizeof(*c_args) * c_args_size);
+    arrayObj = lean_array_cptr(lean_ctor_get(obj,1));
+    for(size_t i = 0; i < c_args_size; i++) { c_args[i] = lean_clingo_mk(arrayObj[i]); }
+    clingo_symbol_create_function(
+         lean_string_cstr(lean_ctor_get(obj, 0)),
+         c_args,
+         c_args_size,
+         *lean_ctor_scalar_cptr(obj),
+         &symbol
+     );
+    free((void *)c_args);
+    return symbol;
+  case 4:
+    clingo_symbol_create_supremum(&symbol);
+    return symbol;
+  }
+}
+
 
 /* Clingo.Symbol.type : Symbol -> SymbolType  */
 uint8_t lean_clingo_symbol_type(uint64_t symbol) {
@@ -481,6 +566,853 @@ uint64_t lean_clingo_symbol_hash(uint64_t a) {
   return hash;
 }
 
+
+/* * Ast */
+/* ** Term */
+/* *** To Term */
+void lean_clingo_term_to_term(lean_object *obj, clingo_ast_term_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  lean_object *data = lean_ctor_get(obj, 1);
+  result->type = lean_ptr_tag(data);
+
+  clingo_ast_term_t *arguments = NULL;
+  size_t arguments_size = 0;
+  lean_object **argumentsArrayObj = NULL;
+  
+  switch(lean_ptr_tag(data)) {
+  case clingo_ast_term_type_symbol:
+    result->symbol = *((uint64_t *)lean_ctor_scalar_cptr(data));
+    break;
+  case clingo_ast_term_type_variable:
+     result->variable = lean_string_cstr(lean_ctor_get(data, 0));
+    break;
+  case clingo_ast_term_type_unary_operation:
+    result->unary_operation = malloc(sizeof(*result->unary_operation));
+    ((clingo_ast_unary_operation_t *)result->unary_operation)->unary_operator = *(lean_ctor_scalar_cptr(data));
+    lean_clingo_term_to_term(lean_ctor_get(data, 0), (clingo_ast_term_t *)&result->unary_operation->argument);
+    break;
+  case clingo_ast_term_type_binary_operation:
+    result->binary_operation = malloc(sizeof(*result->binary_operation));
+    ((clingo_ast_binary_operation_t *)result->binary_operation)->binary_operator = *(lean_ctor_scalar_cptr(data));
+    lean_clingo_term_to_term(lean_ctor_get(data, 0), (clingo_ast_term_t *)&result->binary_operation->left);
+    lean_clingo_term_to_term(lean_ctor_get(data, 1), (clingo_ast_term_t *)&result->binary_operation->right);
+    break;
+  case clingo_ast_term_type_interval:
+    result->interval = malloc(sizeof(*result->interval));
+    lean_clingo_term_to_term(lean_ctor_get(data, 0), (clingo_ast_term_t *)&result->interval->left);
+    lean_clingo_term_to_term(lean_ctor_get(data, 1), (clingo_ast_term_t *)&result->interval->right);
+    break;
+  case clingo_ast_term_type_function:
+    result->function = malloc(sizeof(*result->function));
+    ((clingo_ast_function_t *)result->function)->name = lean_string_cstr(lean_ctor_get(data, 0));
+
+    ((clingo_ast_function_t *)result->function)->size = lean_array_size(lean_ctor_get(data,1));
+    ((clingo_ast_function_t *)result->function)->arguments = malloc(sizeof(*result->function->arguments) * arguments_size);
+
+    argumentsArrayObj = lean_array_cptr(lean_ctor_get(data,1));
+    for(size_t i = 0; i<result->function->size;i++){ lean_clingo_term_to_term(argumentsArrayObj[i], (clingo_ast_term_t *) &result->function->arguments[i]); }
+    break;
+  case clingo_ast_term_type_external_function:
+    result->external_function = malloc(sizeof(*result->external_function));
+
+    ((clingo_ast_function_t *)result->external_function)->name = lean_string_cstr(lean_ctor_get(data, 0));
+
+    ((clingo_ast_function_t *)result->external_function)->size = lean_array_size(lean_ctor_get(data,1));
+    ((clingo_ast_function_t *)result->external_function)->arguments = malloc(sizeof(*result->external_function->arguments) * arguments_size);
+
+    argumentsArrayObj = lean_array_cptr(lean_ctor_get(data,1));
+    for(size_t i = 0; i<result->external_function->size;i++){ lean_clingo_term_to_term(argumentsArrayObj[i], (clingo_ast_term_t *)&result->external_function->arguments[i]); }
+
+    break;
+  case clingo_ast_term_type_pool:
+    result->pool = malloc(sizeof(*result->pool));
+
+    ((clingo_ast_pool_t *)result->pool)->size = lean_array_size(lean_ctor_get(data, 0));
+    ((clingo_ast_pool_t *)result->pool)->arguments = malloc(sizeof(*result->pool->arguments) * result->pool->size);
+
+    argumentsArrayObj = lean_array_cptr(lean_ctor_get(data,0));
+    for(size_t i = 0; i<result->pool->size;i++){ lean_clingo_term_to_term(argumentsArrayObj[i], (clingo_ast_term_t *)&result->pool->arguments[i]); }
+
+    break;
+  }
+  return;
+}
+/* *** Free */
+void lean_clingo_free_term(clingo_ast_term_t *result) {
+  switch(result->type) {
+  case clingo_ast_term_type_symbol:
+    break;
+  case clingo_ast_term_type_variable:
+    break;
+  case clingo_ast_term_type_unary_operation:
+    lean_clingo_free_term((clingo_ast_term_t *)&result->unary_operation->argument);
+     free((void *)result->unary_operation);
+    break;
+  case clingo_ast_term_type_binary_operation:
+    lean_clingo_free_term((clingo_ast_term_t *)&result->binary_operation->left);
+    lean_clingo_free_term((clingo_ast_term_t *)&result->binary_operation->right);
+    free((void *)result->binary_operation);
+    break;
+  case clingo_ast_term_type_interval:
+    lean_clingo_free_term((clingo_ast_term_t *)&result->interval->left);
+    lean_clingo_free_term((clingo_ast_term_t *)&result->interval->right);
+    free((void *)result->interval);
+    break;
+  case clingo_ast_term_type_function:
+    for(size_t i = 0; i<result->function->size;i++){ lean_clingo_free_term((clingo_ast_term_t *) &result->function->arguments[i]); }
+    free((void *)result->function->arguments);
+    free((void *)result->function);
+    break;
+  case clingo_ast_term_type_external_function:
+    for(size_t i = 0; i<result->external_function->size;i++){ lean_clingo_free_term((clingo_ast_term_t *) &result->external_function->arguments[i]); }
+    free((void *)result->external_function->arguments);
+    free((void *)result->external_function);
+    break;
+  case clingo_ast_term_type_pool:
+
+    for(size_t i = 0; i<result->pool->size;i++){ lean_clingo_free_term((clingo_ast_term_t *)&result->pool->arguments[i]); }
+    free((void *)result->pool->arguments);
+    free((void *)result->pool);
+
+    break;
+  }
+}
+
+/* ** Comparison */
+void lean_clingo_comparison_to_comparison(lean_object *obj, clingo_ast_comparison_t *result) {
+  result->comparison = *lean_ctor_scalar_cptr(obj);
+  lean_clingo_term_to_term(lean_ctor_get(obj, 0), &result->left);
+  lean_clingo_term_to_term(lean_ctor_get(obj, 1), &result->right);
+}
+
+void lean_clingo_free_comparison(clingo_ast_comparison_t *result) {
+  lean_clingo_free_term(&result->left);
+  lean_clingo_free_term(&result->right);
+}
+/* ** CSPProductTerm */
+void lean_clingo_csp_product_term_to_csp_product_term(lean_object *obj, clingo_ast_csp_product_term_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj,0));
+  lean_clingo_term_to_term(lean_ctor_get(obj,1), &result->coefficient);
+  CLINGO_CONV_OBJ(term, result, variable, lean_ctor_get(obj,2));
+}
+
+void lean_clingo_free_csp_product_term(clingo_ast_csp_product_term_t *result) {
+  lean_clingo_free_term((clingo_ast_term_t *) &result->coefficient);
+  CLINGO_FREE_OBJ(term, result, variable);
+}
+/*  ** CSPSumTerm */  
+void lean_clingo_csp_sum_term_to_csp_sum_term(lean_object *obj, clingo_ast_csp_sum_term_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj,0));
+  CLINGO_CONV_ARRAY(term, result, terms, lean_ctor_get(obj, 1));
+}
+
+void lean_clingo_free_csp_sum_term(clingo_ast_csp_sum_term_t *result) {
+  CLINGO_FREE_ARRAY(term, result, terms);
+}
+/* ** CSPGuard */
+void lean_clingo_csp_guard_to_csp_guard(lean_object *obj, clingo_ast_csp_guard_t *result) {
+  result->comparison = *(lean_ctor_scalar_cptr(obj));
+  lean_clingo_csp_sum_term_to_csp_sum_term(lean_ctor_get(obj, 0), &result->term);
+}
+
+void lean_clingo_free_csp_guard(clingo_ast_csp_guard_t *result) {
+  lean_clingo_free_csp_sum_term(&result->term);
+}
+/* ** CSPLiteral */
+void lean_clingo_csp_literal_to_csp_literal(lean_object *obj, clingo_ast_csp_literal_t *result) {
+  lean_clingo_csp_sum_term_to_csp_sum_term(lean_ctor_get(obj, 0), &result->term);
+  CLINGO_CONV_ARRAY(csp_guard, result, guards, lean_ctor_get(obj,1));
+}
+
+void lean_clingo_free_csp_literal(clingo_ast_csp_literal_t *result) {
+  lean_clingo_free_csp_sum_term(&result->term);
+  CLINGO_FREE_ARRAY(csp_guard, result, guards);
+}
+/* ** Literal */
+void lean_clingo_literal_to_literal(lean_object *obj, clingo_ast_literal_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  result->sign = *(lean_ctor_scalar_cptr(obj));
+  lean_object *data = lean_ctor_get(obj, 1);
+  result->type = lean_ptr_tag(data);
+  switch (result->type) {
+  case clingo_ast_literal_type_boolean:
+    result->boolean = *(lean_ctor_scalar_cptr(data));
+    break;
+  case clingo_ast_literal_type_symbolic:
+    CLINGO_CONV_OBJ(term, result, symbol, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_literal_type_comparison:
+    CLINGO_CONV_OBJ(comparison, result, comparison, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_literal_type_csp:
+    CLINGO_CONV_OBJ(csp_literal, result, csp_literal, lean_ctor_get(data,0));
+    break;
+  }
+}
+
+void lean_clingo_free_literal(clingo_ast_literal_t *result) {
+  switch (result->type) {
+  case clingo_ast_literal_type_boolean:
+    break;
+  case clingo_ast_literal_type_symbolic:
+    CLINGO_FREE_OBJ(term, result, symbol);
+    break;
+  case clingo_ast_literal_type_comparison:
+    CLINGO_FREE_OBJ(comparison, result, comparison);
+    break;
+  case clingo_ast_literal_type_csp:
+    CLINGO_FREE_OBJ(csp_literal, result, csp_literal);
+    break;
+  }
+}
+/* ** ConditionalLiteral */
+void lean_clingo_conditional_literal_to_conditional_literal(lean_object *obj, clingo_ast_conditional_literal_t *result) {
+  lean_clingo_literal_to_literal(lean_ctor_get(obj, 0), &result->literal);
+  CLINGO_CONV_ARRAY(literal, result, condition, lean_ctor_get(obj,1));
+}
+
+void lean_clingo_free_conditional_literal(clingo_ast_conditional_literal_t *result) {
+  lean_clingo_free_literal(&result->literal);
+  CLINGO_FREE_ARRAY(literal, result, condition);
+}
+/* ** AggregateGuard */
+void lean_clingo_aggregate_guard_to_aggregate_guard(lean_object *obj, clingo_ast_aggregate_guard_t *result) {
+  result->comparison = *(lean_ctor_scalar_cptr(obj));
+  lean_clingo_term_to_term(lean_ctor_get(obj,0), &result->term);
+}
+
+void lean_clingo_free_aggregate_guard(clingo_ast_aggregate_guard_t *result) {
+  lean_clingo_free_term(&result->term);
+}
+/* ** Aggregate */
+void lean_clingo_aggregate_to_aggregate(lean_object *obj, clingo_ast_aggregate_t *result) {
+  CLINGO_CONV_ARRAY(conditional_literal, result, elements, lean_ctor_get(obj,0));
+  CLINGO_CONV_OBJ(aggregate_guard, result, left_guard, lean_ctor_get(obj,1));
+  CLINGO_CONV_OBJ(aggregate_guard, result, right_guard, lean_ctor_get(obj,2));
+}
+
+void lean_clingo_free_aggregate(clingo_ast_aggregate_t *result) {
+  CLINGO_FREE_ARRAY(conditional_literal, result, elements);
+  CLINGO_FREE_OBJ(aggregate_guard, result, left_guard);
+  CLINGO_FREE_OBJ(aggregate_guard, result, right_guard);
+}
+/* ** Aggregate Head Element */
+void lean_clingo_head_aggregate_element_to_head_aggregate_element(lean_object *obj, clingo_ast_head_aggregate_element_t *result) {
+  CLINGO_CONV_ARRAY_SIZED(term, result, tuple, lean_ctor_get(obj,0), tuple_size);
+  lean_clingo_conditional_literal_to_conditional_literal(lean_ctor_get(obj,1), &result->conditional_literal);
+}
+
+void lean_clingo_free_head_aggregate_element(clingo_ast_head_aggregate_element_t *result) {
+  CLINGO_FREE_ARRAY_SIZED(term, result, tuple, tuple_size);
+  lean_clingo_free_conditional_literal(&result->conditional_literal);
+}
+/* ** Aggregate Body Element */
+void lean_clingo_body_aggregate_element_to_body_aggregate_element(lean_object *obj, clingo_ast_body_aggregate_element_t *result) {
+  CLINGO_CONV_ARRAY_SIZED(term, result, tuple, lean_ctor_get(obj,0), tuple_size);
+  CLINGO_CONV_ARRAY_SIZED(literal, result, condition, lean_ctor_get(obj,1), condition_size);
+}
+
+void lean_clingo_free_body_aggregate_element(clingo_ast_body_aggregate_element_t *result) {
+  CLINGO_FREE_ARRAY_SIZED(term, result, tuple, tuple_size);
+  CLINGO_FREE_ARRAY_SIZED(literal, result, condition, condition_size);
+}
+/* ** Aggregate Head */
+void lean_clingo_head_aggregate_to_head_aggregate(lean_object *obj, clingo_ast_head_aggregate_t *result) {
+  result->function = *(lean_ctor_scalar_cptr(obj));
+  CLINGO_CONV_ARRAY(head_aggregate_element, result, elements, lean_ctor_get(obj, 0));
+  CLINGO_CONV_OBJ(aggregate_guard, result, left_guard, lean_ctor_get(obj,1));
+  CLINGO_CONV_OBJ(aggregate_guard, result, right_guard, lean_ctor_get(obj,2));
+}
+
+void lean_clingo_free_head_aggregate(clingo_ast_head_aggregate_t *result) {
+  CLINGO_FREE_ARRAY(head_aggregate_element, result, elements);
+  CLINGO_FREE_OBJ(aggregate_guard, result, left_guard);
+  CLINGO_FREE_OBJ(aggregate_guard, result, right_guard);
+}
+
+/* ** Aggregate Body */
+void lean_clingo_body_aggregate_to_body_aggregate(lean_object *obj, clingo_ast_body_aggregate_t *result) {
+  result->function = *(lean_ctor_scalar_cptr(obj));
+  CLINGO_CONV_ARRAY(body_aggregate_element, result, elements, lean_ctor_get(obj, 0));
+  CLINGO_CONV_OBJ(aggregate_guard, result, left_guard, lean_ctor_get(obj,1));
+  CLINGO_CONV_OBJ(aggregate_guard, result, right_guard, lean_ctor_get(obj,2));
+}
+
+void lean_clingo_free_body_aggregate(clingo_ast_body_aggregate_t *result) {
+  CLINGO_FREE_ARRAY(body_aggregate_element, result, elements);
+  CLINGO_FREE_OBJ(aggregate_guard, result, left_guard);
+  CLINGO_FREE_OBJ(aggregate_guard, result, right_guard);
+}
+
+/* ** Theory Term */
+void lean_clingo_theory_term_to_theory_term(lean_object *obj, clingo_ast_theory_term_t *result);
+void lean_clingo_free_theory_term(clingo_ast_theory_term_t *result);
+
+void lean_clingo_theory_term_array_to_theory_term_array(lean_object *obj, clingo_ast_theory_term_array_t *result);
+void lean_clingo_free_theory_term_array(clingo_ast_theory_term_array_t *result);
+
+void lean_clingo_theory_function_to_theory_function(lean_object *obj, clingo_ast_theory_function_t *result);
+void lean_clingo_free_theory_function(clingo_ast_theory_function_t *result);
+
+void lean_clingo_theory_unparsed_term_to_theory_unparsed_term(lean_object *obj, clingo_ast_theory_unparsed_term_t *result);
+void lean_clingo_free_theory_unparsed_term(clingo_ast_theory_unparsed_term_t *result);
+/* *** Theory Term Array */
+void lean_clingo_theory_term_array_to_theory_term_array(lean_object *obj, clingo_ast_theory_term_array_t *result) {
+  CLINGO_CONV_ARRAY(theory_term, result, terms, obj);
+}
+
+void lean_clingo_free_theory_term_array(clingo_ast_theory_term_array_t *result) {
+  CLINGO_FREE_ARRAY(theory_term, result, terms);
+}
+
+/* *** Function */
+void lean_clingo_theory_function_to_theory_function(lean_object *obj, clingo_ast_theory_function_t *result) {
+  result->name = lean_string_cstr(lean_ctor_get(obj, 0));
+  CLINGO_CONV_ARRAY(theory_term, result, arguments, lean_ctor_get(obj,1));
+}
+void lean_clingo_free_theory_function(clingo_ast_theory_function_t *result) {
+    CLINGO_FREE_ARRAY(theory_term, result, arguments);
+}
+
+/* *** Unparsed Term */
+void lean_clingo_theory_unparsed_term_element_to_theory_unparsed_term_element(lean_object *obj, clingo_ast_theory_unparsed_term_element_t *result) {
+  CLINGO_CONV_ARRAY(string, result, operators, lean_ctor_get(obj, 0));
+  lean_clingo_theory_term_to_theory_term(lean_ctor_get(obj,1), &result->term);
+}
+
+void lean_clingo_free_theory_unparsed_term_element(clingo_ast_theory_unparsed_term_element_t *result) {
+  CLINGO_FREE_ARRAY(string, result, operators);
+  lean_clingo_free_theory_term(&result->term);
+}
+
+void lean_clingo_theory_unparsed_term_to_theory_unparsed_term(lean_object *obj, clingo_ast_theory_unparsed_term_t *result) {
+  CLINGO_CONV_ARRAY(theory_unparsed_term_element, result, elements, obj);
+}
+
+void lean_clingo_free_theory_unparsed_term(clingo_ast_theory_unparsed_term_t *result) {
+    CLINGO_FREE_ARRAY(theory_unparsed_term_element, result, elements);
+}
+
+
+/* *** Term */
+void lean_clingo_theory_term_to_theory_term(lean_object *obj, clingo_ast_theory_term_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  lean_object *data = lean_ctor_get(obj, 1);
+  result->type = lean_ptr_tag(data);
+  switch (result->type) {
+  case clingo_ast_theory_term_type_symbol:
+    result->symbol = *((uint64_t *)lean_ctor_scalar_cptr(data));
+    break;
+  case clingo_ast_theory_term_type_variable:
+    result->variable = lean_string_cstr(lean_ctor_get(data, 0));
+    break;
+  case clingo_ast_theory_term_type_tuple:
+    CLINGO_CONV_OBJ(theory_term_array, result, tuple, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_theory_term_type_list:
+    CLINGO_CONV_OBJ(theory_term_array, result, list, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_theory_term_type_set:
+    CLINGO_CONV_OBJ(theory_term_array, result, set, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_theory_term_type_function:
+    CLINGO_CONV_OBJ(theory_function, result, function, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_theory_term_type_unparsed_term:
+    CLINGO_CONV_OBJ(theory_unparsed_term, result, unparsed_term, lean_ctor_get(data,0));
+    break;
+  }
+}
+
+void lean_clingo_free_theory_term(clingo_ast_theory_term_t *result) {
+  switch (result->type) {
+  case clingo_ast_theory_term_type_symbol:
+    break;
+  case clingo_ast_theory_term_type_variable:
+    break;
+  case clingo_ast_theory_term_type_tuple:
+    CLINGO_FREE_OBJ(theory_term_array, result, tuple);
+    break;
+  case clingo_ast_theory_term_type_list:
+    CLINGO_FREE_OBJ(theory_term_array, result, list);
+    break;
+  case clingo_ast_theory_term_type_set:
+    CLINGO_FREE_OBJ(theory_term_array, result, set);
+    break;
+  case clingo_ast_theory_term_type_function:
+    CLINGO_FREE_OBJ(theory_function, result, function);
+    break;
+  case clingo_ast_theory_term_type_unparsed_term:
+    CLINGO_FREE_OBJ(theory_unparsed_term, result, unparsed_term);
+    break;
+  }
+}
+/* ** Theory Atom Element */
+
+void lean_clingo_theory_atom_element_to_theory_atom_element(lean_object *obj, clingo_ast_theory_atom_element_t *result) {
+  CLINGO_CONV_ARRAY_SIZED(theory_term, result, tuple, lean_ctor_get(obj, 0), tuple_size);
+  CLINGO_CONV_ARRAY_SIZED(literal, result, condition, lean_ctor_get(obj, 1), condition_size);
+}
+
+void lean_clingo_free_theory_atom_element(clingo_ast_theory_atom_element_t *result) {
+  CLINGO_FREE_ARRAY_SIZED(theory_term, result, tuple, tuple_size);
+  CLINGO_FREE_ARRAY_SIZED(literal, result, condition, condition_size);
+}
+
+/* ** Theory Guard */
+void lean_clingo_theory_guard_to_theory_guard(lean_object *obj, clingo_ast_theory_guard_t *result) {
+  result->operator_name = lean_string_cstr(lean_ctor_get(obj, 0));
+  lean_clingo_theory_term_to_theory_term(lean_ctor_get(obj, 1), &result->term);
+}
+
+void lean_clingo_free_theory_guard(clingo_ast_theory_guard_t *result) {
+  lean_clingo_free_theory_term(&result->term);
+}
+
+/* ** Theory Atom */
+void lean_clingo_theory_atom_to_theory_atom(lean_object *obj, clingo_ast_theory_atom_t *result) {
+  lean_clingo_term_to_term(lean_ctor_get(obj, 0), &result->term);
+  CLINGO_CONV_ARRAY(theory_atom_element, result, elements, lean_ctor_get(obj, 1));
+  CLINGO_CONV_OBJ(theory_guard, result, guard, lean_ctor_get(obj, 2));
+}
+
+void lean_clingo_free_theory_atom(clingo_ast_theory_atom_t *result) {
+  lean_clingo_free_term(&result->term);
+  CLINGO_FREE_ARRAY(theory_atom_element, result, elements);
+  CLINGO_FREE_OBJ(theory_guard, result, guard);
+}
+
+/* ** Theory Operator Definition */
+void lean_clingo_theory_operator_definition_to_theory_operator_definition(lean_object *obj, clingo_ast_theory_operator_definition_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  result->name = lean_string_cstr(lean_ctor_get(obj, 1));
+  result->priority = *((uint64_t *)lean_ctor_scalar_cptr(obj));
+  result->type = *((uint8_t *)(((uint64_t *)lean_ctor_scalar_cptr(obj)) + 1));
+}
+
+void lean_clingo_free_theory_operator_definition(clingo_ast_theory_operator_definition_t *result) {
+}
+
+/* ** Theory Term Definition */
+void lean_clingo_theory_term_definition_to_theory_term_definition(lean_object *obj, clingo_ast_theory_term_definition_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  result->name = lean_string_cstr(lean_ctor_get(obj, 1));
+  CLINGO_CONV_ARRAY(theory_operator_definition, result, operators, lean_ctor_get(obj, 2));
+}
+
+void lean_clingo_free_theory_term_definition(clingo_ast_theory_term_definition_t *result) {
+  CLINGO_FREE_ARRAY(theory_operator_definition, result, operators);
+}
+
+/* ** Theory Guard Definition */
+void lean_clingo_theory_guard_definition_to_theory_guard_definition(lean_object *obj, clingo_ast_theory_guard_definition_t *result) {
+  result->term = lean_string_cstr(lean_ctor_get(obj, 0));
+  CLINGO_CONV_ARRAY(string, result, operators, lean_ctor_get(obj, 1));
+}
+
+void lean_clingo_free_theory_guard_definition(clingo_ast_theory_guard_definition_t *result) {
+  CLINGO_FREE_ARRAY(string, result, operators);
+}
+
+/* ** Theory Atom Definition */
+void lean_clingo_theory_atom_definition_to_theory_atom_definition(lean_object *obj, clingo_ast_theory_atom_definition_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  result->type = *((uint8_t *)(((uint64_t *)lean_ctor_scalar_cptr(obj)) + 1));
+  result->name = lean_string_cstr(lean_ctor_get(obj, 1));
+  result->arity = *((uint64_t *)lean_ctor_scalar_cptr(obj));
+  result->elements = lean_string_cstr(lean_ctor_get(obj, 2));
+  CLINGO_CONV_OBJ(theory_guard_definition, result, guard, lean_ctor_get(obj, 3));
+}
+
+void lean_clingo_free_theory_atom_definition(clingo_ast_theory_atom_definition_t *result) {
+  CLINGO_FREE_OBJ(theory_guard_definition, result, guard);
+}
+
+/* ** Disjoint Element */
+void lean_clingo_disjoint_element_to_disjoint_element(lean_object *obj, clingo_ast_disjoint_element_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  CLINGO_CONV_ARRAY_SIZED(term, result, tuple, lean_ctor_get(obj,1), tuple_size);
+  lean_clingo_csp_sum_term_to_csp_sum_term(lean_ctor_get(obj,2), &result->term);
+  CLINGO_CONV_ARRAY_SIZED(literal, result, condition, lean_ctor_get(obj,3), condition_size);
+}
+
+void lean_clingo_free_disjoint_element(clingo_ast_disjoint_element_t *result) {
+  CLINGO_FREE_ARRAY_SIZED(term, result, tuple, tuple_size);
+  lean_clingo_free_csp_sum_term(&result->term);
+  CLINGO_FREE_ARRAY_SIZED(literal, result, condition, condition_size);
+}
+/* ** Disjunction */
+void lean_clingo_disjunction_to_disjunction(lean_object *obj, clingo_ast_disjunction_t *result) {
+  CLINGO_CONV_ARRAY(conditional_literal, result, elements, obj);
+}
+void lean_clingo_free_disjunction(clingo_ast_disjunction_t *result) {
+  CLINGO_FREE_ARRAY(conditional_literal, result, elements);
+}
+
+/* ** Head Literal */
+void lean_clingo_head_literal_to_head_literal(lean_object *obj, clingo_ast_head_literal_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  lean_object *data = lean_ctor_get(obj, 1);
+  result->type = lean_ptr_tag(data);
+  switch (result->type) {
+  case clingo_ast_head_literal_type_literal:
+    CLINGO_CONV_OBJ(literal, result, literal, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_head_literal_type_disjunction:
+    CLINGO_CONV_OBJ(disjunction, result, disjunction, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_head_literal_type_aggregate:
+    CLINGO_CONV_OBJ(aggregate, result, aggregate, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_head_literal_type_head_aggregate:
+    CLINGO_CONV_OBJ(head_aggregate, result, head_aggregate, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_head_literal_type_theory_atom:
+    CLINGO_CONV_OBJ(theory_atom, result, theory_atom, lean_ctor_get(data,0));
+    break;
+  }
+}
+
+void lean_clingo_free_head_literal(clingo_ast_head_literal_t *result) {
+  switch (result->type) {
+  case clingo_ast_head_literal_type_literal:
+    CLINGO_FREE_OBJ(literal, result, literal);
+    break;
+  case clingo_ast_head_literal_type_disjunction:
+    CLINGO_FREE_OBJ(disjunction, result, disjunction);
+    break;
+  case clingo_ast_head_literal_type_aggregate:
+    CLINGO_FREE_OBJ(aggregate, result, aggregate);
+    break;
+  case clingo_ast_head_literal_type_head_aggregate:
+    CLINGO_FREE_OBJ(head_aggregate, result, head_aggregate);
+    break;
+  case clingo_ast_head_literal_type_theory_atom:
+    CLINGO_FREE_OBJ(theory_atom, result, theory_atom);
+    break;
+  }
+}
+
+/* ** Disjoint */
+void lean_clingo_disjoint_to_disjoint(lean_object *obj, clingo_ast_disjoint_t *result) {
+  CLINGO_CONV_ARRAY(disjoint_element, result, elements, obj);
+}
+
+void lean_clingo_free_disjoint(clingo_ast_disjoint_t *result) {
+  CLINGO_FREE_ARRAY(disjoint_element, result, elements);
+}
+
+/* ** Body Literal */
+void lean_clingo_body_literal_to_body_literal(lean_object *obj, clingo_ast_body_literal_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  result->sign = *((uint8_t *)lean_ctor_scalar_cptr(obj));
+  lean_object *data = lean_ctor_get(obj, 1);
+  result->type = lean_ptr_tag(data);
+  switch (result->type) {
+  case clingo_ast_body_literal_type_literal:
+    CLINGO_CONV_OBJ(literal, result, literal, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_body_literal_type_conditional:
+    CLINGO_CONV_OBJ(conditional_literal, result, conditional, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_body_literal_type_aggregate:
+    CLINGO_CONV_OBJ(aggregate, result, aggregate, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_body_literal_type_body_aggregate:
+    CLINGO_CONV_OBJ(body_aggregate, result, body_aggregate, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_body_literal_type_theory_atom:
+    CLINGO_CONV_OBJ(theory_atom, result, theory_atom, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_body_literal_type_disjoint:
+    CLINGO_CONV_OBJ(disjoint, result, disjoint, lean_ctor_get(data,0));
+    break;
+  }
+}
+
+void lean_clingo_free_body_literal(clingo_ast_body_literal_t *result) {
+  switch (result->type) {
+  case clingo_ast_body_literal_type_literal:
+    CLINGO_FREE_OBJ(literal, result, literal);
+    break;
+  case clingo_ast_body_literal_type_conditional:
+    CLINGO_FREE_OBJ(conditional_literal, result, conditional);
+    break;
+  case clingo_ast_body_literal_type_aggregate:
+    CLINGO_FREE_OBJ(aggregate, result, aggregate);
+    break;
+  case clingo_ast_body_literal_type_body_aggregate:
+    CLINGO_FREE_OBJ(body_aggregate, result, body_aggregate);
+    break;
+  case clingo_ast_body_literal_type_theory_atom:
+    CLINGO_FREE_OBJ(theory_atom, result, theory_atom);
+    break;
+  case clingo_ast_body_literal_type_disjoint:
+    CLINGO_FREE_OBJ(disjoint, result, disjoint);
+    break;
+  }
+}
+
+/* ** Definition */
+void lean_clingo_definition_to_definition(lean_object *obj, clingo_ast_definition_t *result) {
+  result->name = lean_string_cstr(lean_ctor_get(obj, 0));
+  lean_clingo_term_to_term(lean_ctor_get(obj, 1), &result->value);
+  result->is_default = *((uint8_t *)lean_ctor_scalar_cptr(obj));
+}
+
+void lean_clingo_free_definition(clingo_ast_definition_t *result) {
+  lean_clingo_free_term(&result->value);
+}
+
+/* ** Id */
+void lean_clingo_id_to_id(lean_object *obj, clingo_ast_id_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  result->id = lean_string_cstr(lean_ctor_get(obj,1));
+}
+
+void lean_clingo_free_id(clingo_ast_id_t *result) {
+}
+
+/* ** Statement */
+/* *** Theory Definition */
+void lean_clingo_theory_definition_to_theory_definition(lean_object *obj, clingo_ast_theory_definition_t *result) {
+  result->name = lean_string_cstr(lean_ctor_get(obj, 0));
+  CLINGO_CONV_ARRAY_SIZED(theory_term_definition, result, terms, lean_ctor_get(obj, 1), terms_size);
+  CLINGO_CONV_ARRAY_SIZED(theory_atom_definition, result, atoms, lean_ctor_get(obj, 2), atoms_size);
+}
+
+void lean_clingo_free_theory_definition(clingo_ast_theory_definition_t *result) {
+  CLINGO_FREE_ARRAY_SIZED(theory_term_definition, result, terms, terms_size);
+  CLINGO_FREE_ARRAY_SIZED(theory_atom_definition, result, atoms, atoms_size);
+}
+
+/* *** Rule */
+void lean_clingo_rule_to_rule(lean_object *obj, clingo_ast_rule_t *result) {
+  lean_clingo_head_literal_to_head_literal(lean_ctor_get(obj, 0), &result->head);
+  CLINGO_CONV_ARRAY(body_literal, result, body, lean_ctor_get(obj, 1));
+}
+
+void lean_clingo_free_rule(clingo_ast_rule_t *result) {
+  lean_clingo_free_head_literal(&result->head);
+  CLINGO_FREE_ARRAY(body_literal, result, body);
+}
+
+
+/* *** Show Signature */
+void lean_clingo_show_signature_to_show_signature(lean_object *obj, clingo_ast_show_signature_t *result) {
+  result->signature = *((uint64_t *)lean_ctor_scalar_cptr(obj));
+  result->csp = *((uint8_t *)(((uint64_t *)lean_ctor_scalar_cptr(obj)) + 1));
+}
+
+void lean_clingo_free_show_signature(clingo_ast_show_signature_t *result) {
+}
+
+/* *** Show Term */
+void lean_clingo_show_term_to_show_term(lean_object *obj, clingo_ast_show_term_t *result) {
+  lean_clingo_term_to_term(lean_ctor_get(obj, 0), &result->term);
+  CLINGO_CONV_ARRAY(body_literal, result, body, lean_ctor_get(obj,1));
+  result->csp = *((uint8_t *)(lean_ctor_scalar_cptr(obj)));
+}
+
+void lean_clingo_free_show_term(clingo_ast_show_term_t *result) {
+  lean_clingo_free_term(&result->term);
+  CLINGO_FREE_ARRAY(body_literal, result, body);
+}
+
+/* *** Minimize */
+void lean_clingo_minimize_to_minimize(lean_object *obj, clingo_ast_minimize_t *result) {
+  lean_clingo_term_to_term(lean_ctor_get(obj, 0), &result->weight);
+  lean_clingo_term_to_term(lean_ctor_get(obj, 1), &result->priority);
+  CLINGO_CONV_ARRAY_SIZED(term, result, tuple, lean_ctor_get(obj, 2), tuple_size);
+  CLINGO_CONV_ARRAY_SIZED(body_literal, result, body, lean_ctor_get(obj, 3), body_size);
+}
+
+void lean_clingo_free_minimize(clingo_ast_minimize_t *result) {
+  lean_clingo_free_term(&result->weight);
+  lean_clingo_free_term(&result->priority);
+  CLINGO_FREE_ARRAY_SIZED(term, result, tuple, tuple_size);
+  CLINGO_FREE_ARRAY_SIZED(body_literal, result, body, body_size);
+}
+
+/* *** Script */
+void lean_clingo_script_to_script(lean_object *obj, clingo_ast_script_t *result) {
+  result->type = *((uint8_t *)lean_ctor_scalar_cptr(obj));
+  result->code = lean_string_cstr(lean_ctor_get(obj, 0));
+}
+
+void lean_clingo_free_script(clingo_ast_script_t *result) {
+}
+
+/* *** Program */
+void lean_clingo_program_to_program(lean_object *obj, clingo_ast_program_t *result) {
+  result->name = lean_string_cstr(lean_ctor_get(obj, 0));
+  CLINGO_CONV_ARRAY(id, result, parameters, lean_ctor_get(obj, 1));
+}
+
+void lean_clingo_free_program(clingo_ast_program_t *result) {
+  CLINGO_FREE_ARRAY(id, result, parameters);
+}
+
+/* *** External */
+void lean_clingo_external_to_external(lean_object *obj, clingo_ast_external_t *result) {
+  lean_clingo_term_to_term(lean_ctor_get(obj, 0), &result->atom);
+  CLINGO_CONV_ARRAY(body_literal, result, body, lean_ctor_get(obj, 1));
+  lean_clingo_term_to_term(lean_ctor_get(obj, 2), &result->type);
+}
+
+void lean_clingo_free_external(clingo_ast_external_t *result) {
+  lean_clingo_free_term(&result->atom);
+  CLINGO_FREE_ARRAY(body_literal, result, body);
+  lean_clingo_free_term(&result->type);
+}
+
+/* *** Edge */
+void lean_clingo_edge_to_edge(lean_object *obj, clingo_ast_edge_t *result) {
+  lean_clingo_term_to_term(lean_ctor_get(obj, 0), &result->u);
+  lean_clingo_term_to_term(lean_ctor_get(obj, 1), &result->v);
+  CLINGO_CONV_ARRAY(body_literal, result, body, lean_ctor_get(obj, 2));
+}
+
+void lean_clingo_free_edge(clingo_ast_edge_t *result) {
+  lean_clingo_free_term(&result->u);
+  lean_clingo_free_term(&result->v);
+  CLINGO_FREE_ARRAY(body_literal, result, body);
+}
+
+/* *** Heuristic */
+void lean_clingo_heuristic_to_heuristic(lean_object *obj, clingo_ast_heuristic_t *result) {
+  lean_clingo_term_to_term(lean_ctor_get(obj, 0), &result->atom);
+  CLINGO_CONV_ARRAY(body_literal, result, body, lean_ctor_get(obj, 1));
+  lean_clingo_term_to_term(lean_ctor_get(obj, 2), &result->bias);
+  lean_clingo_term_to_term(lean_ctor_get(obj, 3), &result->priority);
+  lean_clingo_term_to_term(lean_ctor_get(obj, 4), &result->modifier);
+}
+
+void lean_clingo_free_heuristic(clingo_ast_heuristic_t *result) {
+  lean_clingo_free_term(&result->atom);
+  CLINGO_FREE_ARRAY(body_literal, result, body);
+  lean_clingo_free_term(&result->bias);
+  lean_clingo_free_term(&result->priority);
+  lean_clingo_free_term(&result->modifier);
+}
+
+/* *** Project */
+void lean_clingo_project_to_project(lean_object *obj, clingo_ast_project_t *result) {
+  lean_clingo_term_to_term(lean_ctor_get(obj, 0), &result->atom);
+  CLINGO_CONV_ARRAY(body_literal, result, body, lean_ctor_get(obj, 1));
+}
+
+void lean_clingo_free_project(clingo_ast_project_t *result) {
+  lean_clingo_free_term(&result->atom);
+  CLINGO_FREE_ARRAY(body_literal, result, body);
+}
+
+/* *** Defined */
+void lean_clingo_defined_to_defined(lean_object *obj, clingo_ast_defined_t *result) {
+  assert(lean_ctor_num_objs(obj) == 0);
+  result->signature = *((uint64_t *)lean_ctor_scalar_cptr(obj));
+}
+
+void lean_clingo_free_defined(clingo_ast_defined_t *result) {
+}
+
+
+/* *** Statement */
+void lean_clingo_statement_to_statement(lean_object *obj, clingo_ast_statement_t *result) {
+  result->location = clingo_lean_location_to_location(lean_ctor_get(obj, 0));
+  lean_object *data = lean_ctor_get(obj, 1);
+  result->type = lean_ptr_tag(data);
+  switch (result->type) {
+  case clingo_ast_statement_type_rule:
+    CLINGO_CONV_OBJ(rule, result, rule, data);
+    break;
+  case clingo_ast_statement_type_const:
+    CLINGO_CONV_OBJ(definition, result, definition, lean_ctor_get(data,0));
+    break;
+  case clingo_ast_statement_type_show_signature:
+    CLINGO_CONV_OBJ(show_signature, result, show_signature, data);
+    break;
+  case clingo_ast_statement_type_show_term:
+    CLINGO_CONV_OBJ(show_term, result, show_term, data);
+    break;
+  case clingo_ast_statement_type_minimize:
+    CLINGO_CONV_OBJ(minimize, result, minimize, data);
+    break;
+  case clingo_ast_statement_type_script:
+    CLINGO_CONV_OBJ(script, result, script, data);
+    break;
+  case clingo_ast_statement_type_program:
+    CLINGO_CONV_OBJ(program, result, program, data);
+    break;
+  case clingo_ast_statement_type_external:
+    CLINGO_CONV_OBJ(external, result, external, data);
+    break;
+  case clingo_ast_statement_type_edge:
+    CLINGO_CONV_OBJ(edge, result, edge, data);
+    break;
+  case clingo_ast_statement_type_heuristic:
+    CLINGO_CONV_OBJ(heuristic, result, heuristic, data);
+    break;
+  case clingo_ast_statement_type_project_atom:
+    CLINGO_CONV_OBJ(project, result, project_atom, data);
+    break;
+  case clingo_ast_statement_type_project_atom_signature:
+    result->project_signature = *((uint64_t *)lean_ctor_scalar_cptr(data));
+    break;
+  case clingo_ast_statement_type_theory_definition:
+    CLINGO_CONV_OBJ(theory_definition, result, theory_definition, data);
+    break;
+  case clingo_ast_statement_type_defined:
+    CLINGO_CONV_OBJ(defined, result, defined, data);
+    break;
+  }
+}
+
+void lean_clingo_free_statement(clingo_ast_statement_t *result) {
+  switch (result->type) {
+  case clingo_ast_statement_type_rule:
+    CLINGO_FREE_OBJ(rule, result, rule);
+    break;
+  case clingo_ast_statement_type_const:
+    CLINGO_FREE_OBJ(definition, result, definition);
+    break;
+  case clingo_ast_statement_type_show_signature:
+    CLINGO_FREE_OBJ(show_signature, result, show_signature);
+    break;
+  case clingo_ast_statement_type_show_term:
+    CLINGO_FREE_OBJ(show_term, result, show_term);
+    break;
+  case clingo_ast_statement_type_minimize:
+    CLINGO_FREE_OBJ(minimize, result, minimize);
+    break;
+  case clingo_ast_statement_type_script:
+    CLINGO_FREE_OBJ(script, result, script);
+    break;
+  case clingo_ast_statement_type_program:
+    CLINGO_FREE_OBJ(program, result, program);
+    break;
+  case clingo_ast_statement_type_external:
+    CLINGO_FREE_OBJ(external, result, external);
+    break;
+  case clingo_ast_statement_type_edge:
+    CLINGO_FREE_OBJ(edge, result, edge);
+    break;
+  case clingo_ast_statement_type_heuristic:
+    CLINGO_FREE_OBJ(heuristic, result, heuristic);
+    break;
+  case clingo_ast_statement_type_project_atom:
+    CLINGO_FREE_OBJ(project, result, project_atom);
+    break;
+  case clingo_ast_statement_type_project_atom_signature:
+    break;
+  case clingo_ast_statement_type_theory_definition:
+    CLINGO_FREE_OBJ(theory_definition, result, theory_definition);
+    break;
+  case clingo_ast_statement_type_defined:
+    CLINGO_FREE_OBJ(defined, result, defined);
+    break;
+  }
+}
 
 /* * Statistics
  ============================================================ */
@@ -901,6 +1833,47 @@ bool lean_clingo_ground_event_callback_wrapper(clingo_location_t const *location
         return success;
     }
 }
+/* * Program Builder
+  ============================================================ */
+static void clingo_program_builder_finaliser(void *obj) {  }
+REGISTER_LEAN_CLASS(clingo_program_builder, clingo_program_builder_finaliser, noop_foreach)
+
+/* Clingo.ProgramBuilder.begin_modify: @& ProgramBuilder -> IO Unit */
+lean_obj_res lean_clingo_program_builder_begin(lean_object *obj) {
+  clingo_program_builder_t *pb = lean_get_external_data(obj);
+  bool success = clingo_program_builder_begin(pb);
+  if(success) {
+    return lean_io_result_mk_ok(lean_box(0));
+  } else {
+    return lean_io_result_mk_error(lean_clingo_mk_io_error());
+  }
+}
+
+/* Clingo.ProgramBuilder.end_modify: @& ProgramBuilder -> IO Unit */
+lean_obj_res lean_clingo_program_builder_end(lean_object *obj) {
+  clingo_program_builder_t *pb = lean_get_external_data(obj);
+  bool success = clingo_program_builder_end(pb);
+  if(success) {
+    return lean_io_result_mk_ok(lean_box(0));
+  } else {
+    return lean_io_result_mk_error(lean_clingo_mk_io_error());
+  }
+}
+
+/* Clingo.ProgramBuilder.add_stmt: @& ProgramBuilder -> @& Ast.Statement -> IO Unit */
+lean_obj_res lean_clingo_program_builder_add(lean_object *obj, lean_object *stmtObj) {
+  clingo_program_builder_t *pb = lean_get_external_data(obj);
+  clingo_ast_statement_t *stmt = malloc(sizeof(*stmt));
+  lean_clingo_statement_to_statement(stmtObj, stmt);
+  bool success = clingo_program_builder_add(pb, (const clingo_ast_statement_t  *)stmt);
+  lean_clingo_free_statement(stmt); free((void *)stmt);
+  if(success) {
+    return lean_io_result_mk_ok(lean_box(0));
+  } else {
+    return lean_io_result_mk_error(lean_clingo_mk_io_error());
+  }
+}
+
 /* * Control
  ============================================================
 */ 
@@ -1089,6 +2062,28 @@ lean_obj_res lean_clingo_solve(lean_object *controlObj, uint8_t solve_mode, lean
   } else {
     return lean_io_result_mk_ok(lean_mk_clingo_error());
   }
+}
+
+/* Clingo.Control.program_builder: @& Control -> IO (Except Error ProgramBuilder) */
+lean_obj_res lean_clingo_control_program_builder(lean_object *controlObj) {
+  clingo_control_t *control = lean_get_external_data(controlObj);
+  clingo_program_builder_t *builder;
+  bool success = clingo_control_program_builder(control, &builder);
+
+  if(success) {
+    lean_object *result = lean_alloc_external(get_clingo_program_builder_class(), (void *)builder);
+    return lean_io_result_mk_ok(result);
+  } else {
+    return lean_io_result_mk_error(lean_clingo_mk_io_error());
+  }
+}
+
+
+lean_obj_res lean_clingo_test(lean_object *obj) {
+   printf("lean no fields: %d\n", lean_ctor_num_objs(obj));
+   uint8_t *scalars = lean_ctor_scalar_cptr(obj);
+   printf("x is %d\n", *(((uint64_t *)scalars)));
+  return lean_io_result_mk_ok(lean_box(0));
 }
 
 /* lean_obj_res lean_test(lean_object *obj) { */
