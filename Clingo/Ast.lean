@@ -8,9 +8,9 @@ inductive Sign where | None | Negation | DoubleNegation
 deriving Repr, Inhabited
 inductive Comparison.Operator where | GT | LT | LEQ | GEQ | NEQ | EQ
 deriving Repr, Inhabited
-inductive UnaryOperator.Operator where | Minus | Negation | Absolute
+inductive UnaryOperator where | Minus | Negation | Absolute
 deriving Repr, Inhabited
-inductive BinaryOperator.Operator where | XOR | OR | AND | PLUS | MINUS | MULTIPLICATION | DIVISION | MODULO | POWER
+inductive BinaryOperator where | XOR | OR | AND | PLUS | MINUS | MULTIPLICATION | DIVISION | MODULO | POWER
 deriving Repr, Inhabited
 
 mutual
@@ -22,8 +22,8 @@ mutual
   inductive Term.Data where
   | Symbol (sym: Symbol)
   | Variable (var : String)
-  | UnaryOperator (op: UnaryOperator.Operator) (argument : Term)
-  | BinaryOperator (op: BinaryOperator.Operator) (l r : Term)
+  | UnaryOperator (op: UnaryOperator) (argument : Term)
+  | BinaryOperator (op: BinaryOperator) (l r : Term)
   | Interval (l r : Term)
   | Function (name : String) (arguments : Array Term)
   | ExternalFunction (name : String) (arguments : Array Term)
