@@ -9,8 +9,6 @@ namespace Clingo.Lang
 
 declare_syntax_cat clingo_symbol
 
-
-
 syntax "#inf" : clingo_symbol
 syntax "#sup" : clingo_symbol
 syntax num : clingo_symbol
@@ -42,6 +40,7 @@ syntax ident "(" clingo_term,* ")" : clingo_term
 syntax "@" ident "(" clingo_term,* ")" : clingo_term
 syntax "(" clingo_term,+ ")" : clingo_term
 
+
 declare_syntax_cat clingo_comparison
 syntax clingo_term " < " clingo_term : clingo_comparison
 syntax clingo_term " > " clingo_term : clingo_comparison
@@ -51,8 +50,8 @@ syntax clingo_term " = " clingo_term : clingo_comparison
 syntax clingo_term " != " clingo_term : clingo_comparison
 
 declare_syntax_cat clingo_csp_mul_term
-syntax "$ " clingo_csp_mul_term " $* " clingo_csp_mul_term : clingo_csp_mul_term
-syntax clingo_csp_mul_term " $* " "$ " clingo_csp_mul_term : clingo_csp_mul_term
+syntax "$ " clingo_term " $* " clingo_term : clingo_csp_mul_term
+syntax clingo_term " $* " "$ " clingo_term : clingo_csp_mul_term
 syntax "$ " clingo_term : clingo_csp_mul_term
 syntax clingo_term : clingo_csp_mul_term
 
@@ -156,6 +155,9 @@ def elabTermEnsureTerm (t: Syntax) : TermElabM Expr := do
    if <- isDefEq ty (mkConst `Clingo.Symbol.Repr)
    then mkTerm t (mkApp (mkConst `Clingo.Ast.Term.Data.Symbol) (<- mkSymbol expr))
    else return expr
+
+def elabEnsureCSPSumTerm (t: Syntax) : TermElabM Expr := do
+    Term.elabTerm t (mkConst `Clingo.Ast.CSPSumTerm)
 
 
 def buildArgs (t : TSyntaxArray `clingo_term) : TermElabM (Expr × Bool × Expr) := do
@@ -333,26 +335,175 @@ elab_rules : term
 | `(clingo_comparison| $t1:clingo_term != $t2:clingo_term) => do
    mkComparison `Clingo.Ast.Comparison.Operator.NEQ (<- elabTermEnsureTerm t1) (<- elabTermEnsureTerm t2)
 
+elab_rules : term
+| `(clingo_csp_mul_term| $ $t1:clingo_term $* $t2:clingo_term) => do
+    mkCSPProductTerm t1 (<- elabTermEnsureTerm t1) (<- elabTermEnsureTerm t2)
+| `(clingo_csp_mul_term| $t1:clingo_term $* $ $t2:clingo_term) => do
+    mkCSPProductTerm t1 (<- elabTermEnsureTerm t2) (<- elabTermEnsureTerm t1)
+| `(clingo_csp_mul_term| $ $t1:clingo_term) => do
+    mkCSPProductTerm t1
+        (<- elabTermEnsureTerm (<- `(clingo_term| 1)))
+        (<- elabTermEnsureTerm t1)
+| `(clingo_csp_mul_term| $t1:clingo_term) => do
+    mkCSPProductTerm t1
+        (<- elabTermEnsureTerm t1)
+        (<- elabTermEnsureTerm (<- `(clingo_term| 1)))
 
+partial def build_csp_sum_term (rstx: Syntax) (acc : List Expr) (stx : Syntax) : TermElabM Expr :=
+   match stx with
+   | `(clingo_csp_add_term| $t1:clingo_csp_add_term $+ $t2:clingo_csp_mul_term) => do
+       build_csp_sum_term rstx (List.cons (<- Term.elabTerm t2 .none) acc) t1
+   | `(clingo_csp_add_term| $t1:clingo_csp_add_term $- $t2:clingo_csp_mul_term) => do
+       let loc <- mkLocation t2
+       let fStx <- `(term| (fun loc (pt: Clingo.Ast.CSPProductTerm) =>
+                             Clingo.Ast.CSPProductTerm.mk
+                                loc
+                                (Clingo.Ast.Term.mk loc
+                                   (Clingo.Ast.Term.Data.UnaryOperator .Negation pt.coefficient))
+                                pt.variable_))
+       let f <- Term.elabTerm fStx .none
+       let t2 <- Term.elabTerm t2 .none
+       let t2 := mkApp2 f loc t2
+       build_csp_sum_term rstx (List.cons t2 acc) t1
+   | `(clingo_csp_add_term| $t1:clingo_csp_mul_term) => do
+       mkCSPSumTerm rstx (List.cons (<- Term.elabTerm t1 .none) acc)
+   | _ => do throwUnsupportedSyntax
+
+elab_rules : term
+| `(clingo_csp_add_term| $t1:clingo_csp_add_term $+ $t2:clingo_csp_mul_term) => do
+   build_csp_sum_term t1 [] (<- `(clingo_csp_add_term| $t1 $+ $t2))
+| `(clingo_csp_add_term| $t1:clingo_csp_add_term $- $t2:clingo_csp_mul_term) => do
+   build_csp_sum_term t1 [] (<- `(clingo_csp_add_term| $t1 $- $t2))
+| `(clingo_csp_add_term| $t1:clingo_csp_mul_term) => do
+   build_csp_sum_term t1 [] (<- `(clingo_csp_add_term| $t1:clingo_csp_mul_term))
+
+partial def build_clingo_csp_literal_term (guards : List Expr) (stx : Syntax) : TermElabM Expr :=
+  match stx with
+  | `(clingo_csp_literal| $t1:clingo_csp_literal $< $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.LT (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term (List.cons guard guards) t1
+  | `(clingo_csp_literal| $t1:clingo_csp_literal $> $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.GT (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term (List.cons guard guards) t1
+  | `(clingo_csp_literal| $t1:clingo_csp_literal $<= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.LEQ (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term (List.cons guard guards) t1
+  | `(clingo_csp_literal| $t1:clingo_csp_literal $>= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.GEQ (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term (List.cons guard guards) t1
+  | `(clingo_csp_literal| $t1:clingo_csp_literal $= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.EQ (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term (List.cons guard guards) t1
+  | `(clingo_csp_literal| $t1:clingo_csp_literal $!= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.NEQ (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term (List.cons guard guards) t1
+
+  | `(clingo_csp_literal| $t1:clingo_csp_add_term $< $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.LT (<- elabEnsureCSPSumTerm t2)
+     let guards := (List.cons guard guards)
+     mkCSPLiteral stx (<- elabEnsureCSPSumTerm t1) guards
+  | `(clingo_csp_literal| $t1:clingo_csp_add_term $> $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.GT (<- elabEnsureCSPSumTerm t2)
+     let guards := (List.cons guard guards).reverse
+     mkCSPLiteral stx (<- elabEnsureCSPSumTerm t1) guards
+  | `(clingo_csp_literal| $t1:clingo_csp_add_term $<= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.LEQ (<- elabEnsureCSPSumTerm t2)
+     let guards := (List.cons guard guards)
+     mkCSPLiteral stx (<- elabEnsureCSPSumTerm t1) guards
+  | `(clingo_csp_literal| $t1:clingo_csp_add_term $>= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.GEQ (<- elabEnsureCSPSumTerm t2)
+     let guards := (List.cons guard guards)
+     mkCSPLiteral stx (<- elabEnsureCSPSumTerm t1) guards
+  | `(clingo_csp_literal| $t1:clingo_csp_add_term $= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.EQ (<- elabEnsureCSPSumTerm t2)
+     let guards := (List.cons guard guards)
+     mkCSPLiteral stx (<- elabEnsureCSPSumTerm t1) guards
+  | `(clingo_csp_literal| $t1:clingo_csp_add_term $!= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.NEQ (<- elabEnsureCSPSumTerm t2)
+     let guards := (List.cons guard guards)
+     mkCSPLiteral stx (<- elabEnsureCSPSumTerm t1) guards
+  | _ => do throwUnsupportedSyntax
+
+elab_rules : term
+| `(clingo_csp_literal| $t1:clingo_csp_literal $< $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.LT (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term [guard]  t1
+| `(clingo_csp_literal| $t1:clingo_csp_literal $> $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.GT (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term [guard] t1
+| `(clingo_csp_literal| $t1:clingo_csp_literal $<= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.LEQ (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term [guard] t1
+| `(clingo_csp_literal| $t1:clingo_csp_literal $>= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.GEQ (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term [guard] t1
+| `(clingo_csp_literal| $t1:clingo_csp_literal $= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.EQ (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term [guard] t1
+| `(clingo_csp_literal| $t1:clingo_csp_literal $!= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.NEQ (<- elabEnsureCSPSumTerm t2)
+     build_clingo_csp_literal_term [guard] t1
+| `(clingo_csp_literal| $t1:clingo_csp_add_term $< $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.LT (<- elabEnsureCSPSumTerm t2)
+     let guards := [guard]
+     mkCSPLiteral t1 (<- elabEnsureCSPSumTerm t1) guards
+| `(clingo_csp_literal| $t1:clingo_csp_add_term $> $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.GT (<- elabEnsureCSPSumTerm t2)
+     let guards := [guard]
+     mkCSPLiteral t1 (<- elabEnsureCSPSumTerm t1) guards
+| `(clingo_csp_literal| $t1:clingo_csp_add_term $<= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.LEQ (<- elabEnsureCSPSumTerm t2)
+     let guards := [guard]
+     mkCSPLiteral t1 (<- elabEnsureCSPSumTerm t1) guards
+| `(clingo_csp_literal| $t1:clingo_csp_add_term $>= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.GEQ (<- elabEnsureCSPSumTerm t2)
+     let guards := [guard]
+     mkCSPLiteral t1 (<- elabEnsureCSPSumTerm t1) guards
+| `(clingo_csp_literal| $t1:clingo_csp_add_term $= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.EQ (<- elabEnsureCSPSumTerm t2)
+     let guards := [guard]
+     mkCSPLiteral t1 (<- elabEnsureCSPSumTerm t1) guards
+| `(clingo_csp_literal| $t1:clingo_csp_add_term $!= $t2:clingo_csp_add_term) => do
+     let guard <- mkCSPGuard `Clingo.Ast.Comparison.Operator.NEQ (<- elabEnsureCSPSumTerm t2)
+     let guards := [guard]
+     mkCSPLiteral t1 (<- elabEnsureCSPSumTerm t1) guards
 
 syntax "clingo_term!" "(" clingo_term ")" : term
 elab_rules : term
 | `(term| clingo_term!($s:clingo_term)) => do
     Term.elabTerm s none
 
+syntax "clingo_csp_term!" "(" clingo_csp_add_term ")" : term
+elab_rules : term
+| `(term| clingo_csp_term!($s:clingo_csp_add_term)) => do
+    let t <- Term.elabTerm s none
+    return t
+
 syntax "clingo_comparison!" "(" clingo_comparison ")" : term
 elab_rules : term
 | `(term| clingo_comparison!($s:clingo_comparison)) => do
     Term.elabTerm s none
+
+syntax "clingo_csp_literal!" "(" clingo_csp_literal ")" : term
+elab_rules : term
+| `(term| clingo_csp_literal!($s:clingo_csp_literal)) => do
+    Term.elabTerm s none
+
 
 def fAB := clingo_term!(f(a,b))
 
 def z := clingo_term!(f(A,~g(a), |x| + (z * (2 + 1) * @g(A) * -A)))
 #print z
 
+
 def c := clingo_comparison!(1 < 2)
 #print c
 
+def e := clingo_csp_term!($ x $- z $+ 2 $- 3 $+ y)
+#print e
+
+def f := clingo_csp_literal!($ x $- z $+ 2 $- 3 $+ y $< 3 $- z $< 10 $= 20)
+#print f
 
 syntax "clingo!" "(" clingo_symbol ")" : term
 macro_rules
