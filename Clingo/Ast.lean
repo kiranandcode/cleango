@@ -87,18 +87,19 @@ structure AggregateGuard where
 deriving Repr, Inhabited
 
 structure Aggregate where
-  elements : List ConditionalLiteral
+  elements : Array ConditionalLiteral
   left: AggregateGuard
   right: AggregateGuard
 deriving Repr, Inhabited
 
-inductive Aggregrate.Function where | Count | Sum | Sump | Min | Max
+inductive Aggregate.Function where | Count | Sum | Sump | Min | Max
 deriving Repr, Inhabited
 
-structure Aggregrate.Head.Element where
+structure Aggregate.Head.Element where
   tuple : Array Term
   conditional_literal: ConditionalLiteral
 deriving Repr, Inhabited
+
 
 structure Aggregate.Body.Element where
   tuple: Array Term
@@ -106,18 +107,20 @@ structure Aggregate.Body.Element where
 deriving Repr, Inhabited
 
 structure Aggregate.Head where
-   function: Aggregrate.Function
-   elements: Array Aggregrate.Head.Element
+   function: Aggregate.Function
+   elements: Array Aggregate.Head.Element
    left: AggregateGuard
    right: AggregateGuard
 deriving Repr, Inhabited
 
+
 structure Aggregate.Body where
-   function: Aggregrate.Function
+   function: Aggregate.Function
    elements: Array Aggregate.Body.Element
    left: AggregateGuard
    right: AggregateGuard
 deriving Repr, Inhabited
+
 
 namespace Theory
 private abbrev ASTTerm := Term

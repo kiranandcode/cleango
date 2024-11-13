@@ -32,12 +32,12 @@ def test_symbol : IO Unit := do
    println! "the string is {sym.string?}"
    println! "type is {repr sym.type}"
 
-   let sym := Clingo.Symbol.mk_id "a" true
-   println! "made a id symbol {sym}"
+   let _sym := Clingo.Symbol.mk_id "a" Bool.true
+   println! "made a id symbol {_sym}"
    println! "type is {repr sym.type}"
    println! "hash is {sym.hash}"
 
-   let sym := Clingo.Symbol.mk_fun "hello" #[sym] true
+   let sym := Clingo.Symbol.mk_fun "hello" #[sym] Bool.true
    println! "made a fun symbol {sym}"
    println! "the name is {sym.name?}"
    println! "args are {sym.args?}"
@@ -67,7 +67,7 @@ def test_control : IO Unit := do
        | Clingo.SolveEvent.Finished res => do
            println! "search finished {repr res}"
 
-       return true
+       return Bool.true
    let Except.ok control <- Clingo.Control.mk (args := #[]) | throw (IO.userError "failed to create control")
    let Except.ok () <- control.load "./test/test.clingo" | throw (IO.userError "failed to load test file")
    let Except.ok () <- control.add "main" #[] "p(b). q(A) :- p(A)." | throw (IO.userError "failed to load expression")
@@ -98,7 +98,7 @@ def test_program_builder : IO Unit := open Clingo.Ast in do
        | Clingo.SolveEvent.Finished res => do
            println! "search finished {repr res}"
 
-       return true
+       return Bool.true
    let Except.ok control <- Clingo.Control.mk (args := #[]) | throw (IO.userError "failed to create control")
    let location := Clingo.Location.mk "beginFile" "endFile" 1 2 3 4
    control.withProgramBuilder fun pb => do
@@ -126,7 +126,7 @@ def test_program_builder : IO Unit := open Clingo.Ast in do
           location,
          .Literal ⟨ location, .None, .Symbolic ⟨
             location,
-             .Symbol (Clingo.Symbol.mk (.Function "q" #[(.Variable "a")] true) )
+             .Symbol (Clingo.Symbol.mk (.Function "q" #[(.Variable "a")] Bool.true) )
            ⟩⟩ ⟩
            #[]⟩;
       pb.addStatement $ ⟨
@@ -135,12 +135,12 @@ def test_program_builder : IO Unit := open Clingo.Ast in do
           location,
          .Literal ⟨ location, .None, .Symbolic ⟨
             location,
-             .Symbol (Clingo.Symbol.mk (.Function "q" #[(.Variable "b")] true) )
+             .Symbol (Clingo.Symbol.mk (.Function "q" #[(.Variable "b")] Bool.true) )
            ⟩⟩ ⟩
            #[]⟩;
 
       println! "finished"
-   let Except.ok () <- control.ground #[Clingo.Part.mk "base" #[]] (fun loc name args ret => pure true) | throw (IO.userError "failed to load expression")
+   let Except.ok () <- control.ground #[Clingo.Part.mk "base" #[]] (fun loc name args ret => pure Bool.true) | throw (IO.userError "failed to load expression")
    let Except.ok handle <- control.solve Clingo.SolveMode.Neither (#[] : Array Clingo.Literal) my_callback | throw (IO.userError "failed to solve")
    let _ <- handle.wait (-1.0)
 
