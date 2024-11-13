@@ -1,5 +1,8 @@
 import Clingo
 open Lean
+def x (y : Clingo.Control) := (y : Clingo.Control).withProgramBuilder fun pb =>
+   return ()
+
 
 def test_version : IO Unit := do
    let ⟨ major, minor, revision ⟩ <- Clingo.version

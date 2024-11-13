@@ -38,3 +38,8 @@ lean_exe test_lang {
   root := `test.TestLang
 }
     
+@[default_target]
+lean_exe test_all {
+  root := `test.TestAll
+}
+

@@ -19,6 +19,12 @@ private opaque end_modify: @& ProgramBuilder -> IO Unit
 @[extern "lean_clingo_program_builder_add"]
 opaque addStatement: @& ProgramBuilder -> @& Ast.Statement -> IO Unit
 
+def addStatements (pb: @& ProgramBuilder) (stmts: List Ast.Statement) : IO Unit :=
+   for stmt in stmts do
+      pb.addStatement stmt
+   
+
+
 end ProgramBuilder
 
 namespace Control

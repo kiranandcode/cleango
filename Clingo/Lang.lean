@@ -1356,7 +1356,15 @@ elab_rules : term
        (<- mkAstStatementDataRule head body)
 
 
+def build_term (t: Syntax): TSyntax `term := TSyntax.mk t
 
+syntax "add_clingo_query!" term ":" (colGt clingo_statement)*  : term
+macro_rules 
+| `(term| add_clingo_query! $control:term : $cs:clingo_statement*) =>
+    `(($control : Clingo.Control).withProgramBuilder fun pb => do
+        pb.addStatements [$(Syntax.TSepArray.ofElems <| cs.raw.map build_term),*]
+        return ()
+     )
 
 syntax "clingo_term!" "(" clingo_term ")" : term
 elab_rules : term
@@ -1411,43 +1419,43 @@ elab_rules : term
 
 
 def z := clingo_literal!(f(a) $< f(b))
-#print z
+-- #print z
 
 def z' := clingo_condition_literal!(f(a) $< f(b))
-#print z'
+-- #print z'
 
 def z'' := clingo_aggregate!({})
-#print z''
+-- #print z''
 
 
 def z''' := clingo_aggregate!({f : x, y, z} <= 3)
-#print z'''
+-- #print z'''
 
 
 def z'''' := clingo_aggregate_head!(2 = sum{f : x} <= 3)
-#print z''''
+-- #print z''''
 def z''''' := clingo_aggregate_body!(2 = sum{f : x} <= 3)
-#print z'''''
+-- #print z'''''
 
 
 def z'''''' := clingo_statement!(f(x) .)
-#print z''''''
+-- #print z''''''
 
 
 def fAB := clingo_term!(f(a,b))
 
 def z2 := clingo_term!(f(A,~g(a), |x| + (z * (2 + 1) * @g(A) * -A)))
-#print z2
+-- #print z2
 
 
 def c := clingo_comparison!(1 < 2)
-#print c
+-- #print c
 
 def e := clingo_csp_term!($ x $- z $+ 2 $- 3 $+ y)
-#print e
+-- #print e
 
 def f := clingo_csp_literal!($ x $- z $+ 2 $- 3 $+ y $< 3 $- z $< 10 $= 20)
-#print f
+-- #print f
 
 syntax "clingo!" "(" clingo_symbol ")" : term
 macro_rules
